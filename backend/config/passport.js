@@ -2,13 +2,14 @@ import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import User from '../models/User.js';
 
-// Only configure real Google OAuth if credentials exist
 const hasGoogleCreds =
   process.env.GOOGLE_CLIENT_ID &&
   process.env.GOOGLE_CLIENT_ID !== 'your_google_client_id';
 
 if (hasGoogleCreds) {
-  passport.use(new GoogleStrategy(
+
+  // ─── Strategy 1: Login (profile + email only) ──────────────────────────────
+  passport.use('google', new GoogleStrategy(
     {
       clientID: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,

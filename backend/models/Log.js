@@ -21,6 +21,7 @@ const logSchema = new mongoose.Schema({
   action: { type: String, default: '' },
   reply: { type: String, default: '' },
   channel: { type: String, enum: ['email', 'whatsapp', 'simulation'], default: 'simulation' },
+  from: { type: String, sparse: true }, // WhatsApp sender's number or email
   timestamp: { type: Date, default: Date.now },
 }, { timestamps: true });
 
