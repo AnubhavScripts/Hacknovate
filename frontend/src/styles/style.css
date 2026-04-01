@@ -1,0 +1,236 @@
+* {
+  box-sizing: border-box;
+}
+
+/* ========== LOGIN PAGE STYLES ========== */
+.login-page {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  font-family: "Poppins", "Segoe UI", sans-serif;
+  background: #ffffff;
+}
+
+.login-page::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 10%;
+  width: 1px;
+  height: 80%;
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.login-image {
+  width: 50%;
+  flex-shrink: 0;
+  background-size: cover;
+  background-position: center;
+  position: relative;
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    135deg,
+    rgba(99, 102, 241, 0.75),
+    rgba(79, 70, 229, 0.6)
+  );
+  opacity: 0.50;
+  color: white;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 70px;
+}
+
+.overlay h1 {
+  font-size: 42px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.5px;
+  margin-bottom: 12px;
+}
+
+.overlay p {
+  font-size: 17px;
+  opacity: 0.55;
+  max-width: 380px;
+}
+
+.login-form-section {
+  width: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: #f9fafb;
+}
+
+.login-box {
+  width: 380px;
+  padding: 42px;
+  background: white;
+  border-radius: 20px;
+  box-shadow:
+    0 30px 60px rgba(0, 0, 0, 0.12),
+    0 10px 20px rgba(0, 0, 0, 0.06);
+  animation: fadeUp 0.6s ease;
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(15px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.login-box h2 {
+  text-align: center;
+  font-size: 26px;
+  margin-bottom: 6px;
+  color: #111827;
+}
+
+.subtitle {
+  text-align: center;
+  font-size: 14px;
+  color: #6b7280;
+  margin-bottom: 26px;
+}
+
+.login-box input {
+  width: 100%;
+  padding: 13px 14px;
+  margin-bottom: 16px;
+  border-radius: 10px;
+  border: 1px solid #d1d5db;
+  font-size: 14px;
+  transition: all 0.25s ease;
+}
+
+.login-box input:focus {
+  outline: none;
+  border-color: #0e10a7;
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.15);
+}
+
+.options-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+.remember-me input {
+  display: none;
+}
+
+.remember-me {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.checkmark {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #c7d2fe;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.checkmark::after {
+  content: "✓";
+  font-size: 12px;
+  color: white;
+  display: none;
+}
+
+.remember-me input:checked + .checkmark {
+  background: #0e10a7;
+  border-color: #0e10a7;
+}
+
+.remember-me input:checked + .checkmark::after {
+  display: block;
+}
+
+.remember-text {
+  font-size: 14px;
+  color: #374151;
+  white-space: nowrap;
+}
+
+.forgot-link {
+  font-size: 14px;
+  color: #0e10a7;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.forgot-link:hover {
+  text-decoration: underline;
+}
+
+.login-box button {
+  width: 100%;
+  padding: 13px;
+  background: linear-gradient(135deg, #0e10a7, #0e10a7);
+  color: white;
+  border: none;
+  border-radius: 14px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 5px;
+  transition: all 0.3s ease;
+}
+
+.login-box button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 25px rgba(99, 102, 241, 0.45);
+}
+
+.link-text {
+  margin-top: 20px;
+  font-size: 14px;
+  text-align: center;
+  color: #6b7280;
+}
+
+.link-text span {
+  color: #4f46e5;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.link-text span:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 900px) {
+  .login-image {
+    display: none;
+  }
+
+  .login-form-section {
+    flex: 1;
+    background: linear-gradient(
+      to bottom,
+      #f9fafb,
+      #eef2ff
+    );
+  }
+}
+
+/* ========== DASHBOARD LAYOUT STYLES ========== */
