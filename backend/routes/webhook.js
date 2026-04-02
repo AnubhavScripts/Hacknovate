@@ -1,12 +1,15 @@
 import express from 'express';
 import { handleGmailWebhook, webhookHealth } from '../controllers/webhookController.js';
+import { handleWhatsAppWebhook, whatsappWebhookHealth } from '../controllers/whatsappWebhookController.js';
 
 const router = express.Router();
 
-// Health check
+// ─── Gmail (Google Cloud Pub/Sub push) ────────────────────────────────────────
 router.get('/gmail/health', webhookHealth);
-
-// Main Gmail webhook - receives Pub/Sub push notifications
 router.post('/gmail', handleGmailWebhook);
+
+// ─── WhatsApp (Twilio) ────────────────────────────────────────────────────────
+router.get('/whatsapp/health', whatsappWebhookHealth);
+router.post('/whatsapp', handleWhatsAppWebhook);
 
 export default router;

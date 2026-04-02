@@ -1,6 +1,7 @@
 import passport from 'passport';
 import jwt from 'jsonwebtoken';
 import { google } from 'googleapis';
+import { subscribeToGmailNotifications } from '../services/gmailService.js';
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 const hasGoogleCreds =
@@ -59,6 +60,7 @@ export const gmailCallback = async (req, res) => {
     console.log('[gmailCallback] Tokens received:', !!tokens.access_token);
 
     // Save access token to DB and/or session
+    let savedUserId = null;
     try {
       const { default: User } = await import('../models/User.js');
       const userId = req.session?.mockUser?._id || req.user?._id;
@@ -67,6 +69,7 @@ export const gmailCallback = async (req, res) => {
           gmailAccessToken: tokens.access_token,
           ...(tokens.refresh_token && { gmailRefreshToken: tokens.refresh_token }),
         });
+        savedUserId = userId;
         console.log('[gmailCallback] Token saved to DB for user:', userId);
       }
       // Store in session for immediate use regardless of DB
@@ -76,6 +79,18 @@ export const gmailCallback = async (req, res) => {
       }
     } catch (dbErr) {
       console.warn('[gmailCallback] DB save skipped:', dbErr.message);
+    }
+
+    // ── Start Gmail push notifications (fire-and-forget) ──────────────────────
+    // This calls gmail.users.watch() so Google Pub/Sub pushes new-email events
+    // to  POST /webhook/gmail  in real-time.
+    const pubSubTopic = process.env.PUBSUB_TOPIC_NAME;
+    if (pubSubTopic && savedUserId) {
+      subscribeToGmailNotifications(tokens.access_token, pubSubTopic, String(savedUserId))
+        .then(() => console.log('[gmailCallback] Gmail push-notifications activated for user:', savedUserId))
+        .catch(err => console.warn('[gmailCallback] gmail.watch() failed (non-fatal):', err.message));
+    } else if (!pubSubTopic) {
+      console.warn('[gmailCallback] PUBSUB_TOPIC_NAME not set — skipping gmail.watch() (polling mode only)');
     }
 
     return res.redirect(`${FRONTEND_URL}/onboarding?gmail=connected&step=3`);
