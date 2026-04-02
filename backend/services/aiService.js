@@ -49,7 +49,7 @@ Analyse the customer message in the context of ${flowType} and respond ONLY with
 
   try {
     const response = await openai.chat.completions.create({
-      model: 'mixtral-8x7b-32768',
+      model: 'llama-3.1-70b-versatile',
       messages: [
         {
           role: 'system',
@@ -88,7 +88,7 @@ export async function generateReply(message, type = 'query', flowType = 'general
 
   try {
     const response = await openai.chat.completions.create({
-      model: 'mixtral-8x7b-32768',
+      model: 'llama-3.1-70b-versatile',
       messages: [
         {
           role: 'system',

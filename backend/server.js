@@ -12,6 +12,12 @@ import authRoutes from './routes/auth.js';
 import automationRoutes from './routes/automation.js';
 import messageRoutes from './routes/message.js';
 import logRoutes from './routes/logs.js';
+import webhookRoutes from './routes/webhook.js';
+import escalationRoutes from './routes/escalations.js';
+import rulesRoutes from './routes/rules.js';
+
+// Middleware imports
+import { verifyApiKey } from './middleware/auth.js';
 
 // Passport config
 import './config/passport.js';
@@ -51,6 +57,9 @@ app.use('/auth', authRoutes);
 app.use('/automation', automationRoutes);
 app.use('/analyze-message', messageRoutes);
 app.use('/logs', logRoutes);
+app.use('/webhook', webhookRoutes);
+app.use('/escalations', escalationRoutes);
+app.use('/rules', rulesRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

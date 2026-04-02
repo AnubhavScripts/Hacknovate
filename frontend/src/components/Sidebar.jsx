@@ -1,13 +1,24 @@
-import { LayoutDashboard, Zap, Settings, Radio, Plug } from 'lucide-react';
+import { LayoutDashboard, Zap, Settings, Radio, Plug, BarChart3, AlertTriangle, FileText } from 'lucide-react';
 
-const navItems = [
+// Dashboard navigation
+const dashboardItems = [
   { id: 'automations', label: 'Automations', icon: LayoutDashboard },
   { id: 'channels',    label: 'Channels',    icon: Plug },
+  { id: 'escalations', label: 'Escalations', icon: AlertTriangle },
   { id: 'simulate',   label: 'Simulate AI', icon: Zap },
+  { id: 'analytics',  label: 'Analytics', icon: BarChart3 },
   { id: 'settings',   label: 'Settings',    icon: Settings },
 ];
 
-const Sidebar = ({ activeSection, setActiveSection }) => {
+// Analytics navigation
+const analyticsItems = [
+  { id: 'overview', label: 'Overview', icon: BarChart3 },
+  { id: 'escalations', label: 'Escalations', icon: AlertTriangle },
+  { id: 'logs', label: 'Message Logs', icon: FileText },
+];
+
+const Sidebar = ({ activeSection, setActiveSection, page = 'dashboard' }) => {
+  const navItems = page === 'analytics' ? analyticsItems : dashboardItems;
   return (
     <aside style={{
       width: 220,

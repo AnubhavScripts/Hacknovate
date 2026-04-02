@@ -181,9 +181,10 @@ ${plainTextReply}
  * Requires Google Cloud Pub/Sub to be set up
  * @param {string} accessToken - Google OAuth access token
  * @param {string} topicName - Google Cloud Pub/Sub topic name (e.g., 'projects/YOUR_PROJECT/topics/gmail-notifications')
+ * @param {string} userId - User ID to include in notification payload
  * @returns {Object} Subscription response
  */
-export async function subscribeToGmailNotifications(accessToken, topicName) {
+export async function subscribeToGmailNotifications(accessToken, topicName, userId) {
   try {
     const oauth2Client = new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,
@@ -196,6 +197,7 @@ export async function subscribeToGmailNotifications(accessToken, topicName) {
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
     // Subscribe to Gmail notifications
+    // The labelIds ensures we only watch new emails in INBOX
     const response = await gmail.users.watch({
       userId: 'me',
       requestBody: {
@@ -205,6 +207,10 @@ export async function subscribeToGmailNotifications(accessToken, topicName) {
     });
 
     console.log(`✅ Gmail notification subscription successful:`, response.data);
+    console.log(`   Topic: ${topicName}`);
+    console.log(`   User ID: ${userId}`);
+    console.log(`   Watch expiration: ${new Date(response.data.expiration).toISOString()}`);
+    
     return response.data;
   } catch (err) {
     console.error('Failed to subscribe to Gmail notifications:', err.message);

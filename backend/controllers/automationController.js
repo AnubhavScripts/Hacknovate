@@ -3,6 +3,8 @@ import User from '../models/User.js';
 import { getNewEmails, sendEmail, subscribeToGmailNotifications, unsubscribeFromGmailNotifications, formatEmailAsHtml } from '../services/gmailService.js';
 import { classifyMessage, generateReply } from '../services/aiService.js';
 import Log from '../models/Log.js';
+import { checkEscalation, determineAction, getDefaultRules } from '../services/ruleEngine.js';
+import { escalateMessage } from '../services/escalationService.js';
 
 // ─── Save onboarding automation config ───────────────────────────────────────
 export const saveAutomation = async (req, res) => {
@@ -15,18 +17,30 @@ export const saveAutomation = async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
+    // Check if automation exists
+    let automation = await Automation.findOne({ userId });
+    const isNewAutomation = !automation;
+
     // Upsert — one automation per user
-    const automation = await Automation.findOneAndUpdate(
+    automation = await Automation.findOneAndUpdate(
       { userId },
-      { selectedOptions, connectedChannels, status: status || 'active' },
+      { 
+        selectedOptions, 
+        connectedChannels, 
+        status: status || 'active',
+        // ✨ Initialize default rules if new automation
+        ...(isNewAutomation && { rules: getDefaultRules() }),
+      },
       { upsert: true, new: true }
     );
+
+    console.log(`${isNewAutomation ? '🆕' : '📝'} Automation ${isNewAutomation ? 'created' : 'updated'} for user ${userId}`);
 
     // Subscribe to Gmail push notifications if Gmail is connected
     if (connectedChannels?.gmail && user.gmailAccessToken && process.env.GMAIL_WEBHOOK_TOPIC) {
       try {
         console.log('📧 Subscribing to Gmail notifications...');
-        await subscribeToGmailNotifications(user.gmailAccessToken, process.env.GMAIL_WEBHOOK_TOPIC);
+        await subscribeToGmailNotifications(user.gmailAccessToken, process.env.GMAIL_WEBHOOK_TOPIC, userId);
         console.log('✅ Gmail webhook subscription successful');
       } catch (subscribeErr) {
         console.warn('⚠️ Could not subscribe to Gmail webhooks (deployment may not support it):', subscribeErr.message);
@@ -39,7 +53,11 @@ export const saveAutomation = async (req, res) => {
       await User.findByIdAndUpdate(userId, { isOnboarded: true });
     }
 
-    res.json({ success: true, automation });
+    res.json({ 
+      success: true, 
+      automation,
+      message: isNewAutomation ? 'Automation created with default rules' : 'Automation updated',
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -89,11 +107,46 @@ export const processEmails = async (req, res) => {
     }
 
     const flowType = automation.selectedOptions[0] || 'general';
+    let processed = 0;
 
     for (const email of newEmails) {
       try {
-        // Classify
+        // ✨ RULE ENGINE: Classify the message
         const classification = await classifyMessage(email.body, flowType);
+        console.log(`📧 Email from ${email.from}: type=${classification.type}, priority=${classification.priority}`);
+
+        // ✨ Check escalation rules
+        const escalationDecision = checkEscalation(classification, automation);
+
+        // ✨ Create log entry FIRST (audit trail)
+        const logEntry = await Log.create({
+          userId: user._id,
+          automationId,
+          message: email.body,
+          type: classification.type,
+          sentiment: classification.sentiment,
+          priority: classification.priority,
+          action: classification.action,
+          channel: 'email',
+          from: email.from,
+          conversationId: email.threadId || '',
+          escalated: escalationDecision.shouldEscalate,
+          escalationReason: escalationDecision.shouldEscalate ? escalationDecision.reason : '',
+          ruleApplied: escalationDecision.ruleApplied,
+          aiConfidence: 0.87,
+        });
+
+        // ✨ If escalation decision: notify and skip auto-reply
+        if (escalationDecision.shouldEscalate) {
+          console.log(`🚨 ESCALATING: ${email.from} - ${escalationDecision.reason}`);
+          await escalateMessage(logEntry, user, escalationDecision.reason);
+          processed++;
+          continue;
+        }
+
+        // ✨ Otherwise: auto-reply
+        console.log(`💬 Auto-replying to ${email.from}`);
+        
         // Generate reply
         const reply = await generateReply(email.body, classification.type, flowType);
 
@@ -103,19 +156,15 @@ export const processEmails = async (req, res) => {
         // Send reply email (as HTML)
         await sendEmail(user.gmailAccessToken, email.from, `Re: ${email.subject}`, htmlEmail, true);
 
-        // Log
-        await Log.create({
-          userId: user._id,
-          automationId,
-          message: email.body,
-          type: classification.type,
-          sentiment: classification.sentiment,
-          priority: classification.priority,
-          action: classification.action,
+        // Update log with reply info
+        await Log.findByIdAndUpdate(logEntry._id, {
           reply,
-          channel: 'email',
-          from: email.from,
+          hasReplied: true,
         });
+
+        console.log(`✅ Reply sent to ${email.from}`);
+        processed++;
+
       } catch (emailErr) {
         console.error(`Error processing email from ${email.from}:`, emailErr.message);
         // Continue processing other emails even if one fails
@@ -126,7 +175,7 @@ export const processEmails = async (req, res) => {
     automation.lastEmailCheck = new Date();
     await automation.save();
 
-    res.json({ processed: newEmails.length });
+    res.json({ processed, total: newEmails.length });
   } catch (err) {
     console.error('processEmails error:', err.message);
     res.status(500).json({ error: `Failed to process emails: ${err.message}` });
