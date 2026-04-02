@@ -6,7 +6,7 @@ const router = express.Router();
 // POST /analyze-message - for analyzing messages via API
 router.post('/', analyzeMessage);
 
-// POST /whatsapp-webhook - for receiving incoming WhatsApp messages from Twilio
-router.post('/whatsapp-webhook', handleIncomingWhatsApp);
+// POST /whatsapp-webhook/:automationId - for receiving incoming WhatsApp messages from Twilio
+router.post('/whatsapp-webhook/:automationId', handleIncomingWhatsApp);
 
 export default router;

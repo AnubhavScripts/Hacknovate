@@ -35,6 +35,9 @@ const Step3Channels = () => {
   const [gmailError, setGmailError] = useState(null);
   const location = useLocation();
 
+  // Green color for successful connections
+  const successColor = '#10b981';
+
   // Show error banner if OAuth returned ?gmail=error
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -94,10 +97,10 @@ const Step3Channels = () => {
                     padding: '16px 20px',
                     borderRadius: 12,
                     border: isConnected
-                      ? `1.5px solid ${channel.brand}40`
+                      ? `1.5px solid ${successColor}40`
                       : '1.5px solid #e2e8f0',
                     background: isConnected
-                      ? `${channel.brand}08`
+                      ? `${successColor}08`
                       : '#fff',
                     transition: 'all 0.2s ease',
                   }}>
@@ -107,14 +110,14 @@ const Step3Channels = () => {
                         width: 44,
                         height: 44,
                         borderRadius: 10,
-                        background: isConnected ? `${channel.brand}15` : '#f8fafc',
-                        border: `1px solid ${isConnected ? channel.brand + '30' : '#e2e8f0'}`,
+                        background: isConnected ? `${successColor}15` : '#f8fafc',
+                        border: `1px solid ${isConnected ? successColor + '30' : '#e2e8f0'}`,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         flexShrink: 0,
                       }}>
-                        <Icon size={20} style={{ color: isConnected ? channel.brand : '#64748b' }} />
+                        <Icon size={20} style={{ color: isConnected ? successColor : '#64748b' }} />
                       </div>
                       <div>
                         <p style={{ fontWeight: 600, fontSize: '0.95rem', color: '#0f172a', margin: 0 }}>
@@ -135,9 +138,9 @@ const Step3Channels = () => {
                           gap: 6,
                           padding: '6px 14px',
                           borderRadius: 99,
-                          background: `${channel.brand}15`,
-                          border: `1px solid ${channel.brand}40`,
-                          color: channel.brand,
+                          background: `${successColor}15`,
+                          border: `1px solid ${successColor}40`,
+                          color: successColor,
                           fontWeight: 600,
                           fontSize: '0.8rem',
                         }}>

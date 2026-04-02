@@ -4,7 +4,7 @@ const automationSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   selectedOptions: {
     type: [String],
-    enum: ['complaints', 'queries', 'order_tracking', 'cancellations'],
+    enum: ['complaint_handling', 'query_answering', 'order_tracking', 'cancellation_requests'],
     default: [],
   },
   connectedChannels: {
@@ -16,6 +16,7 @@ const automationSchema = new mongoose.Schema({
     enum: ['active', 'paused', 'draft'],
     default: 'draft',
   },
+  lastEmailCheck: { type: Date, default: Date.now },
 }, { timestamps: true });
 
 export default mongoose.model('Automation', automationSchema);

@@ -1,10 +1,15 @@
 import OpenAI from 'openai';
 
-const hasOpenAIKey =
-  process.env.OPENAI_API_KEY &&
-  process.env.OPENAI_API_KEY !== 'your_openai_api_key';
+const hasGroqKey =
+  process.env.GROK_API_KEY &&
+  process.env.GROK_API_KEY !== 'your_grok_api_key' &&
+  process.env.GROK_API_KEY.length > 10;
 
-const openai = hasOpenAIKey ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
+// Initialize Groq API client (uses OpenAI SDK compatible endpoint)
+const openai = hasGroqKey ? new OpenAI({ 
+  apiKey: process.env.GROK_API_KEY,
+  baseURL: 'https://api.groq.com/openai/v1'
+}) : null;
 
 // ─── Mock fallback ────────────────────────────────────────────────────────────
 const MOCK_CLASSIFICATIONS = {
@@ -26,35 +31,44 @@ function getMockClassification(message) {
 }
 
 // ─── classifyMessage ──────────────────────────────────────────────────────────
-export async function classifyMessage(message) {
+export async function classifyMessage(message, flowType = 'general') {
   if (!openai) {
     // Simulate a short delay for realism
     await new Promise(r => setTimeout(r, 400));
     return getMockClassification(message);
   }
 
-  const response = await openai.chat.completions.create({
-    model: 'gpt-3.5-turbo',
-    messages: [
-      {
-        role: 'system',
-        content: `You are an AI assistant for a merchant automation platform.
-Analyse the customer message and respond ONLY with valid JSON in this exact format:
+  const systemPrompt = `You are an AI assistant for a merchant automation platform.
+Analyse the customer message in the context of ${flowType} and respond ONLY with valid JSON in this exact format:
 {
   "type": "complaint" | "query" | "order" | "cancellation",
   "sentiment": "positive" | "neutral" | "negative",
   "priority": "low" | "medium" | "high" | "urgent",
   "action": "<a brief recommended action for the merchant>"
-}`,
-      },
-      { role: 'user', content: message },
-    ],
-    temperature: 0.3,
-    max_tokens: 200,
-  });
+}`;
 
-  const raw = response.choices[0].message.content.trim();
-  return JSON.parse(raw);
+  try {
+    const response = await openai.chat.completions.create({
+      model: 'mixtral-8x7b-32768',
+      messages: [
+        {
+          role: 'system',
+          content: systemPrompt,
+        },
+        { role: 'user', content: message },
+      ],
+      temperature: 0.3,
+      max_tokens: 200,
+    });
+
+    const raw = response.choices[0].message.content.trim();
+    return JSON.parse(raw);
+  } catch (err) {
+    console.error('❌ Groq API Error:', err.message);
+    console.error('Using mock fallback instead...');
+    // Fallback to mock if API fails
+    return getMockClassification(message);
+  }
 }
 
 // ─── generateReply ────────────────────────────────────────────────────────────
@@ -66,27 +80,34 @@ const MOCK_REPLIES = {
   unknown: "Thank you for reaching out to us. We've received your message and a member of our support team will get back to you shortly. We appreciate your patience.",
 };
 
-export async function generateReply(message, type = 'query') {
+export async function generateReply(message, type = 'query', flowType = 'general') {
   if (!openai) {
     await new Promise(r => setTimeout(r, 300));
     return MOCK_REPLIES[type] || MOCK_REPLIES.unknown;
   }
 
-  const response = await openai.chat.completions.create({
-    model: 'gpt-3.5-turbo',
-    messages: [
-      {
-        role: 'system',
-        content: `You are a professional customer support AI for an e-commerce merchant.
-Generate a concise, empathetic, and professional reply to the customer message.
+  try {
+    const response = await openai.chat.completions.create({
+      model: 'mixtral-8x7b-32768',
+      messages: [
+        {
+          role: 'system',
+          content: `You are a professional customer support AI for an e-commerce merchant.
+Generate a concise, empathetic, and professional reply to the customer message in the context of ${flowType}.
 The message has been classified as: ${type}.
 Respond in 2-3 sentences. Do NOT include greetings like "Dear Customer" or sign-offs.`,
-      },
-      { role: 'user', content: message },
-    ],
-    temperature: 0.6,
-    max_tokens: 200,
-  });
+        },
+        { role: 'user', content: message },
+      ],
+      temperature: 0.6,
+      max_tokens: 200,
+    });
 
-  return response.choices[0].message.content.trim();
+    return response.choices[0].message.content.trim();
+  } catch (err) {
+    console.error('❌ Groq API Error in generateReply:', err.message);
+    console.error('Using mock fallback instead...');
+    // Fallback to mock if API fails
+    return MOCK_REPLIES[type] || MOCK_REPLIES.unknown;
+  }
 }

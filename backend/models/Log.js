@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 
 const logSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', sparse: true },
+  automationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Automation', sparse: true },
   message: { type: String, required: true },
   type: {
     type: String,

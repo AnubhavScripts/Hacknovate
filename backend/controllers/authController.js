@@ -26,9 +26,8 @@ const makeGmailOAuth2Client = () => new google.auth.OAuth2(
   process.env.GMAIL_CALLBACK_URL || 'http://localhost:8000/auth/gmail/callback'
 );
 
-// ─── Gmail Connector OAuth (Step 3 — gmail.send only) ────────────────────────
-// Bypasses passport-google-oauth20 to avoid the UserInfo endpoint call,
-// which fails when only the gmail.send scope is requested.
+// ─── Gmail Connector OAuth (Step 3 — gmail.modify scope) ────────────────────
+// Requests full Gmail access: read, send, and modify emails
 export const gmailConnect = (req, res) => {
   if (!hasGoogleCreds) {
     return res.status(501).json({ error: 'Google OAuth not configured.' });
@@ -37,7 +36,10 @@ export const gmailConnect = (req, res) => {
   const authUrl = oauth2Client.generateAuthUrl({
     access_type: 'offline',
     prompt: 'consent',
-    scope: ['https://www.googleapis.com/auth/gmail.send'],
+    scope: [
+      'https://www.googleapis.com/auth/gmail.modify',  // Full Gmail access (read, send, modify)
+      'https://www.googleapis.com/auth/gmail.readonly', // Fallback read-only
+    ],
   });
   return res.redirect(authUrl);
 };
@@ -62,8 +64,8 @@ export const gmailCallback = async (req, res) => {
       const userId = req.session?.mockUser?._id || req.user?._id;
       if (userId && userId !== 'mock_user_001') {
         await User.findByIdAndUpdate(userId, {
-          accessToken: tokens.access_token,
-          ...(tokens.refresh_token && { refreshToken: tokens.refresh_token }),
+          gmailAccessToken: tokens.access_token,
+          ...(tokens.refresh_token && { gmailRefreshToken: tokens.refresh_token }),
         });
         console.log('[gmailCallback] Token saved to DB for user:', userId);
       }
