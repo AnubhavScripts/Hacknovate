@@ -24,7 +24,7 @@ export const googleAuth = (req, res, next) => {
 const makeGmailOAuth2Client = () => new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
   process.env.GOOGLE_CLIENT_SECRET,
-  process.env.GMAIL_CALLBACK_URL || 'http://localhost:8000/auth/gmail/callback'
+  process.env.GMAIL_CALLBACK_URL || 'https://hacknovate-production.up.railway.app/auth/gmail/callback'
 );
 
 // ─── Gmail Connector OAuth (Step 3 — gmail.modify scope) ─────────────────────

@@ -12,7 +12,7 @@ export async function sendEmail(accessToken, to, subject, message, isHtml = true
   const oauth2Client = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
-    process.env.GMAIL_CALLBACK_URL || 'http://localhost:8000/auth/gmail/callback'
+    process.env.GMAIL_CALLBACK_URL || 'https://hacknovate-production.up.railway.app/auth/gmail/callback'
   );
 
   oauth2Client.setCredentials({ access_token: accessToken });
@@ -40,7 +40,7 @@ export async function getNewEmails(accessToken, lastChecked) {
   const oauth2Client = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
-    process.env.GMAIL_CALLBACK_URL || 'http://localhost:8000/auth/gmail/callback'
+    process.env.GMAIL_CALLBACK_URL || 'https://hacknovate-production.up.railway.app/auth/gmail/callback'
   );
 
   oauth2Client.setCredentials({ access_token: accessToken });
@@ -189,7 +189,7 @@ export async function subscribeToGmailNotifications(accessToken, topicName, user
     const oauth2Client = new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,
       process.env.GOOGLE_CLIENT_SECRET,
-      process.env.GMAIL_CALLBACK_URL || 'http://localhost:8000/auth/gmail/callback'
+      process.env.GMAIL_CALLBACK_URL || 'https://hacknovate-production.up.railway.app/auth/gmail/callback'
     );
 
     oauth2Client.setCredentials({ access_token: accessToken });
@@ -228,7 +228,7 @@ export async function unsubscribeFromGmailNotifications(accessToken) {
     const oauth2Client = new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,
       process.env.GOOGLE_CLIENT_SECRET,
-      process.env.GMAIL_CALLBACK_URL || 'http://localhost:8000/auth/gmail/callback'
+      process.env.GMAIL_CALLBACK_URL || 'https://hacknovate-production.up.railway.app/auth/gmail/callback'
     );
 
     oauth2Client.setCredentials({ access_token: accessToken });

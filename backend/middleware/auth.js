@@ -52,7 +52,7 @@ export const verifyApiKey = (req, res, next) => {
  */
 export const validateTwilioSignature = async (req, res, next) => {
   const signature = req.headers['x-twilio-signature'] || '';
-  const url = `${process.env.TWILIO_WEBHOOK_URL || 'http://localhost:8000'}${req.originalUrl}`;
+  const url = `${process.env.TWILIO_WEBHOOK_URL || 'https://hacknovate-production.up.railway.app'}${req.originalUrl}`;
   
   const { validateTwilioRequest } = await import('../services/whatsappService.js');
   
