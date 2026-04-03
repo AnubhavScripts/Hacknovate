@@ -4,6 +4,7 @@ import { classifyMessage, generateReply, classifyLead, generateConversationSumma
 import Automation from '../models/Automation.js';
 import Log from '../models/Log.js';
 import User from '../models/User.js';
+import Conversation from '../models/Conversation.js';
 
 /**
  * Validate that the request actually came from Twilio.
@@ -122,9 +123,24 @@ export const handleWhatsAppWebhook = async (req, res) => {
       }
       console.log(`🧠 Flow selected: ${flowType}`);
 
-      // ── 10. Basic message classification (type, sentiment, priority) ────────
+      // ── 10. Basic message classification (type, sentiment, priority) ──────────
       classification = await classifyMessage(incomingBody, 'general');
       console.log(`📊 [WhatsApp] Classified: ${classification.type} | Priority: ${classification.priority}`);
+
+      // ── 10a. Short-reply override ("yes"/"ok"/"hmm" ≠ invalid) ───────────────
+      const SHORT_REPLIES = ['yes', 'ok', 'hmm', 'sure', 'done', 'will do', 'haan',
+        'okay', 'got it', 'alright', 'yep', 'nope', 'no', 'maybe', 'fine', 'great'];
+      if (SHORT_REPLIES.includes(incomingBody.toLowerCase().trim())) {
+        classification.type     = 'conversation';
+        classification.priority = 'medium';
+        console.log(`💬 [WhatsApp] Short reply → type overridden to 'conversation'`);
+      }
+
+      // ── 10b. Remap 'invalid' → 'conversation' when lead context is active ───────
+      if (classification.type === 'invalid' && leadData?.intent !== 'irrelevant') {
+        classification.type = 'conversation';
+        console.log(`💬 [WhatsApp] 'invalid' remapped to 'conversation' (lead context active)`);
+      }
 
       // ── 11. Extract known entities from lead data ───────────────────────────
       const knownSalary     = leadData?.entities?.salary     ?? null;
@@ -203,6 +219,7 @@ export const handleWhatsAppWebhook = async (req, res) => {
               intent:        leadData.intent,
               signals:       leadData.signals?.buying_signals ?? [],
               reason:        leadData.reason,
+              summary,                        // ✨ Store AI summary on user
               lastInteraction: new Date(),
             },
           });
@@ -211,21 +228,63 @@ export const handleWhatsAppWebhook = async (req, res) => {
         }
       }
 
+      // ── 12b. Upsert Conversation doc (one per customer phone) ──────────────
+      const conversationId = fromNumber;
+      try {
+        const prevScore = user?.lead?.score ?? null;
+        const curScore  = leadData?.lead_score ?? null;
+        const convTrend = (prevScore === null || curScore === null) ? null
+          : curScore > prevScore + 5  ? 'increasing'
+          : curScore < prevScore - 5  ? 'decreasing'
+          :                             'stable';
+
+        await Conversation.findOneAndUpdate(
+          { conversationId },
+          {
+            $set: {
+              userId:        user?._id       ?? undefined,
+              automationId:  automation?._id ?? undefined,
+              summary,
+              lead: {
+                type:    leadData?.lead_type  ?? null,
+                score:   curScore,
+                trend:   convTrend,
+                intent:  leadData?.intent     ?? null,
+                signals: leadData?.signals?.buying_signals ?? [],
+                reason:  leadData?.reason     ?? null,
+              },
+              lastMessage:   incomingBody.slice(0, 200),
+              flowType,
+              lastMessageAt: new Date(),
+            },
+            $inc:         { totalMessages: 1 },
+            $setOnInsert: { firstMessageAt: new Date() },
+          },
+          { upsert: true, new: true }
+        );
+        console.log(`📝 [Conversation] Upserted ${fromNumber} | ${leadData?.lead_type} score=${leadData?.lead_score}`);
+      } catch (convErr) {
+        console.warn('⚠️  Conversation upsert failed:', convErr.message);
+      }
+
       // ── 13. Log the interaction ─────────────────────────────────────────────
       if (user && automation && classification) {
         try {
           await Log.create({
-            userId: user._id,
-            automationId: automation._id,
-            message: incomingBody,
-            type: classification.type,
-            sentiment: classification.sentiment,
-            priority: classification.priority,
-            action: classification.action,
-            reply:   replyText,
-            channel: 'whatsapp',
-            from:    fromNumber,
-            subject: 'WhatsApp Message',
+            userId:        user._id,
+            automationId:  automation._id,
+            message:       incomingBody,
+            type:          classification.type,
+            sentiment:     classification.sentiment,
+            priority:      classification.priority,
+            action:        classification.action,
+            reply:         replyText,
+            channel:       'whatsapp',
+            from:          fromNumber,
+            subject:       'WhatsApp Message',
+            conversationId,                     // ✨ links all msgs from same phone
+            conversationSummary: summary,       // ✨ AI summary snapshot per message
+            hasReplied:    true,
             lead: leadData ? {
               type:    leadData.lead_type,
               score:   leadData.lead_score,

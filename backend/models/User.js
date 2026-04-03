@@ -21,6 +21,7 @@ const userSchema = new mongoose.Schema({
     intent:        { type: String, default: null },
     signals:       [{ type: String }],
     reason:        { type: String, default: null },
+    summary:       { type: String, default: null }, // AI-generated conversation summary
     lastInteraction: { type: Date, default: null },
   },
 }, { timestamps: true });

@@ -4,37 +4,16 @@ import User from '../models/User.js';
 
 const router = express.Router();
 
-// GET /logs/:userId — fetch logs for a user (most recent first)
-router.get('/:userId', async (req, res) => {
-  try {
-    const { userId } = req.params;
-    const query = userId === 'mock_user_001' ? {} : { userId };
-    const logs = await Log.find(query).sort({ timestamp: -1 }).limit(100);
-    res.json(logs);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// GET /logs/ — all logs (admin / demo)
-router.get('/', async (req, res) => {
-  try {
-    const logs = await Log.find().sort({ timestamp: -1 }).limit(50);
-    res.json(logs);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+// ⚠️  Specific routes MUST come before /:userId to avoid Express swallowing them ─
 
 // GET /logs/leads/:userId — lead-classified logs only (HOT / WARM / COLD)
+// Optional query: ?type=HOT|WARM|COLD
 router.get('/leads/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
-    const { type } = req.query; // optional filter: ?type=HOT
+    const { type } = req.query;
 
-    const matchQuery = userId === 'mock_user_001'
-      ? {}
-      : { userId };
+    const matchQuery = userId === 'mock_user_001' ? {} : { userId };
 
     if (type && ['HOT', 'WARM', 'COLD'].includes(type.toUpperCase())) {
       matchQuery['lead.type'] = type.toUpperCase();
@@ -45,7 +24,7 @@ router.get('/leads/:userId', async (req, res) => {
     const logs = await Log.find(matchQuery)
       .sort({ 'lead.score': -1, timestamp: -1 })
       .limit(50)
-      .select('message type sentiment priority from channel timestamp lead reply');
+      .select('message type sentiment priority from channel timestamp lead reply conversationId conversationSummary');
 
     res.json(logs);
   } catch (err) {
@@ -53,7 +32,7 @@ router.get('/leads/:userId', async (req, res) => {
   }
 });
 
-// GET /logs/lead-stats/:userId — aggregated HOT / WARM / COLD counts
+// GET /logs/lead-stats/:userId — aggregated HOT / WARM / COLD counts from Log collection
 router.get('/lead-stats/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
@@ -79,6 +58,29 @@ router.get('/lead-stats/:userId', async (req, res) => {
     });
 
     res.json({ stats, currentLead: userLead?.lead ?? null });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /logs/ — all logs (admin / demo)
+router.get('/', async (req, res) => {
+  try {
+    const logs = await Log.find().sort({ timestamp: -1 }).limit(50);
+    res.json(logs);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /logs/:userId — fetch logs for a user (most recent first)
+// ↑ Must be LAST among GET routes — catches everything not matched above
+router.get('/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const query = userId === 'mock_user_001' ? {} : { userId };
+    const logs = await Log.find(query).sort({ timestamp: -1 }).limit(100);
+    res.json(logs);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

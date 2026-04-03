@@ -48,9 +48,16 @@ Valid message types:
 - "order": Customer asking about order status, delivery, tracking
 - "cancellation": Customer wants to cancel an order or subscription
 
+CRITICAL RULE — SHORT CONVERSATIONAL MESSAGES:
+If the message is a short reply that continues an ongoing conversation — such as:
+"yes", "ok", "hmm", "sure", "done", "will do", "haan", "okay", "got it", "alright", "yep", "nope", "no", "maybe"
+→ DO NOT classify as "invalid"
+→ Classify as: type "query", priority "low"
+These are conversation continuations, not invalid messages.
+
 IMPORTANT: If the message is related to financial services, loans, credit, EMI, salary, eligibility → always classify as "query", never "invalid".
 
-Only classify as "invalid" if the message is completely off-topic: random jokes, general knowledge unrelated to any business, pure spam, or gibberish.
+Only classify as "invalid" if the message is completely off-topic with zero business relevance: unrelated jokes, trivia, pure spam, or total gibberish with no conversational context.
 
 Respond ONLY with valid JSON in this exact format:
 {
