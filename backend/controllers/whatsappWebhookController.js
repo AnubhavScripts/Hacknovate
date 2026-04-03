@@ -1,6 +1,6 @@
 import twilio from 'twilio';
-import { processIncomingMessage, generateTwiMLResponse } from '../services/whatsappService.js';
-import { classifyLead, generateConversationSummary } from '../services/aiService.js';
+import { generateTwiMLResponse } from '../services/whatsappService.js';
+import { classifyMessage, generateReply, classifyLead, generateConversationSummary } from '../services/aiService.js';
 import Automation from '../models/Automation.js';
 import Log from '../models/Log.js';
 import User from '../models/User.js';
@@ -17,7 +17,6 @@ function isTwilioRequestValid(req) {
   }
 
   const signature = req.headers['x-twilio-signature'] || '';
-  // Build the full URL Railway exposes
   const protocol = req.headers['x-forwarded-proto'] || req.protocol;
   const host = req.headers['x-forwarded-host'] || req.headers.host;
   const url = `${protocol}://${host}${req.originalUrl}`;
@@ -35,7 +34,6 @@ function isTwilioRequestValid(req) {
  * Receives incoming WhatsApp messages from Twilio and replies via TwiML.
  */
 export const handleWhatsAppWebhook = async (req, res) => {
-  // Always respond with XML content-type (Twilio expects TwiML)
   res.set('Content-Type', 'text/xml');
 
   try {
@@ -48,8 +46,8 @@ export const handleWhatsAppWebhook = async (req, res) => {
     // ── 2. Extract message fields sent by Twilio ──────────────────────────────
     const {
       Body: incomingBody,
-      From: fromNumber,    // e.g. whatsapp:+919876543210
-      To: toNumber,        // e.g. whatsapp:+14155238886 (your sandbox number)
+      From: fromNumber,
+      To: toNumber,
       ProfileName: senderName,
     } = req.body;
 
@@ -77,94 +75,144 @@ export const handleWhatsAppWebhook = async (req, res) => {
       console.warn('⚠️  DB lookup failed (running in DB-less mode):', dbErr.message);
     }
 
-    // ── 4. Determine flow type ────────────────────────────────────────────────
-    const flowType = automation?.selectedOptions?.[0] || 'general';
+    // ── 4. Default flow type (will be overridden after lead classification) ───
+    let flowType = 'support';
 
-    // ── 5. Classify the message and generate an AI reply ──────────────────────
     let replyText = 'Thank you for reaching out! Our team will get back to you shortly.';
+    let classification = null;
+    let leadData = null;
 
     try {
-      const { classification, reply } = await processIncomingMessage(incomingBody, flowType);
-      replyText = reply;
-
-      console.log(`📊 [WhatsApp] Classified: ${classification.type} | Priority: ${classification.priority}`);
-
-      // ── 6. Lead scoring with full conversation history + AI summary ─────────
-      let leadData = null;
+      // ── 5. Build conversation history ───────────────────────────────────────
+      let conversationHistory = [];
       try {
-        // a) Fetch last 10 messages from this sender, oldest first
-        //    .slice(-10) is a safety net in case the query returns more
-        let conversationHistory = [];
-        try {
-          const pastLogs = await Log.find({ from: fromNumber, channel: 'whatsapp' })
-            .sort({ timestamp: -1 })
-            .limit(10)
-            .select('message reply timestamp')
-            .lean();
-          conversationHistory = pastLogs.reverse().slice(-10); // oldest → newest, max 10
-        } catch (histErr) {
-          console.warn('⚠️  Could not fetch conversation history:', histErr.message);
-        }
-
-        // b) Build a User↔Bot transcript (roles matter for AI understanding)
-        const transcript = conversationHistory
-          .map(log => [
-            `User: ${log.message}`,
-            log.reply ? `Bot: ${log.reply}` : null,
-          ].filter(Boolean).join('\n'))
-          .join('\n');
-
-        // Append the current message at the bottom
-        const fullConversation = transcript
-          ? `${transcript}\nUser: ${incomingBody}`
-          : `User: ${incomingBody}`;
-
-        // c) AI-generated semantic summary (not just metadata)
-        //    e.g. "User wants a ₹5L loan urgently; shared 60k salary; asked about docs"
-        const summary = await generateConversationSummary(fullConversation);
-        console.log(`📝 [Summary] ${summary}`);
-
-        // d) Classify the lead with full context
-        leadData = await classifyLead(summary, fullConversation);
-        console.log(`🎯 [Lead] ${leadData.lead_type} (score: ${leadData.lead_score}) — intent: ${leadData.intent} | history: ${conversationHistory.length} prior msgs`);
-
-        // e) Compute score trend: compare against last persisted score on User
-        if (user && leadData) {
-          const prevScore = user.lead?.score ?? null;
-          const newScore  = leadData.lead_score;
-          const trend = prevScore === null    ? null
-            : newScore > prevScore + 5        ? 'increasing'
-            : newScore < prevScore - 5        ? 'decreasing'
-            :                                   'stable';
-
-          if (trend) {
-            console.log(`📈 [Lead Trend] ${prevScore} → ${newScore} (${trend})`);
-          }
-
-          // f) Persist lead state on User for instant dashboard reads
-          try {
-            await User.findByIdAndUpdate(user._id, {
-              lead: {
-                type:          leadData.lead_type,
-                score:         newScore,
-                previousScore: prevScore,
-                trend,
-                intent:        leadData.intent,
-                signals:       leadData.signals?.buying_signals ?? [],
-                reason:        leadData.reason,
-                lastInteraction: new Date(),
-              },
-            });
-          } catch (persistErr) {
-            console.warn('⚠️  Lead state persist failed:', persistErr.message);
-          }
-        }
-      } catch (leadErr) {
-        console.warn('⚠️  Lead classification failed:', leadErr.message);
+        const pastLogs = await Log.find({ from: fromNumber, channel: 'whatsapp' })
+          .sort({ timestamp: -1 })
+          .limit(10)
+          .select('message reply timestamp')
+          .lean();
+        conversationHistory = pastLogs.reverse().slice(-10); // oldest → newest, max 10
+      } catch (histErr) {
+        console.warn('⚠️  Could not fetch conversation history:', histErr.message);
       }
 
-      // ── 7. Log the interaction ────────────────────────────────────────────
-      if (user && automation) {
+      // ── 6. Build full transcript ────────────────────────────────────────────
+      const transcript = conversationHistory
+        .map(log => [
+          `User: ${log.message}`,
+          log.reply ? `Bot: ${log.reply}` : null,
+        ].filter(Boolean).join('\n'))
+        .join('\n');
+
+      const fullConversation = transcript
+        ? `${transcript}\nUser: ${incomingBody}`
+        : `User: ${incomingBody}`;
+
+      // ── 7. AI-generated semantic summary ───────────────────────────────────
+      const summary = await generateConversationSummary(fullConversation);
+      console.log(`📝 [Summary] ${summary}`);
+
+      // ── 8. Classify lead FIRST (determines flow type) ──────────────────────
+      leadData = await classifyLead(summary, fullConversation);
+      console.log(`🎯 [Lead] ${leadData.lead_type} (score: ${leadData.lead_score}) — intent: ${leadData.intent} | history: ${conversationHistory.length} prior msgs`);
+
+      // ── 9. Decide flow dynamically based on lead intent ────────────────────
+      if (leadData && leadData.intent !== 'irrelevant') {
+        flowType = 'sales';
+      }
+      console.log(`🧠 Flow selected: ${flowType}`);
+
+      // ── 10. Basic message classification (type, sentiment, priority) ────────
+      classification = await classifyMessage(incomingBody, 'general');
+      console.log(`📊 [WhatsApp] Classified: ${classification.type} | Priority: ${classification.priority}`);
+
+      // ── 11. Extract known entities from lead data ───────────────────────────
+      const knownSalary     = leadData?.entities?.salary     ?? null;
+      const knownLoanAmount = leadData?.entities?.loan_amount ?? null;
+      const convoText       = fullConversation.toLowerCase();
+
+      // ── 12. Follow-up engine — guarantee key questions are always asked ──────
+      // Only fires in sales mode when AI reply might be too generic
+      let followUpOverride = null;
+
+      if (flowType === 'sales') {
+        const missing = [];
+
+        // Only flag as missing if NOT already present in conversation text
+        const salaryMentioned     = /salary|income|earn|\d+k\b|\d+,000/i.test(convoText);
+        const loanAmountMentioned = /\d[\d,]*\s*(lakh|lac|l\b|k\b)|loan amount|how much/i.test(convoText);
+
+        if (!knownSalary && !salaryMentioned)         missing.push('salary');
+        if (!knownLoanAmount && !loanAmountMentioned) missing.push('loan_amount');
+
+        if (missing.length === 2) {
+          // Neither known — ask both together (first message scenario)
+          followUpOverride = "To help you better, what's your monthly salary and how much loan do you need?";
+        } else if (missing.includes('salary')) {
+          // Loan amount known but salary missing — personalize
+          const lakhStr = knownLoanAmount
+            ? `₹${(knownLoanAmount / 100000).toFixed(1)} lakh — ` : '';
+          followUpOverride = `Got it${lakhStr ? ` — ${lakhStr}` : '!'}Could you share your monthly salary?`;
+        } else if (missing.includes('loan_amount')) {
+          // Salary known but loan amount missing — personalize
+          const salaryStr = knownSalary
+            ? `₹${knownSalary.toLocaleString('en-IN')} salary — ` : '';
+          followUpOverride = `${salaryStr ? `Got it — ${salaryStr}h` : 'H'}ow much loan are you looking for?`;
+        }
+        // If both are known → no override, let AI craft the eligibility/CTA reply
+      }
+
+      // ── 13. Generate reply using the correct flow + context ─────────────────
+      const aiReply = await generateReply(
+        incomingBody,
+        classification.type,
+        flowType,
+        { knownSalary, knownLoanAmount, convoText }
+      );
+
+      // Follow-up engine overrides only if AI gave a weak/generic reply
+      // (detected by being too short or lacking a question mark in sales mode)
+      const aiIsWeak = flowType === 'sales' &&
+        (aiReply.length < 30 || (!aiReply.includes('?') && followUpOverride));
+
+      replyText = (followUpOverride && aiIsWeak) ? followUpOverride : aiReply;
+
+      console.log(`💬 [Reply] flow=${flowType} | override=${!!followUpOverride && aiIsWeak} | "${replyText.slice(0, 80)}"`);
+
+
+      // ── 12. Compute score trend and persist lead state on User ──────────────
+      if (user && leadData) {
+        const prevScore = user.lead?.score ?? null;
+        const newScore  = leadData.lead_score;
+        const trend = prevScore === null    ? null
+          : newScore > prevScore + 5        ? 'increasing'
+          : newScore < prevScore - 5        ? 'decreasing'
+          :                                   'stable';
+
+        if (trend) {
+          console.log(`📈 [Lead Trend] ${prevScore} → ${newScore} (${trend})`);
+        }
+
+        try {
+          await User.findByIdAndUpdate(user._id, {
+            lead: {
+              type:          leadData.lead_type,
+              score:         newScore,
+              previousScore: prevScore,
+              trend,
+              intent:        leadData.intent,
+              signals:       leadData.signals?.buying_signals ?? [],
+              reason:        leadData.reason,
+              lastInteraction: new Date(),
+            },
+          });
+        } catch (persistErr) {
+          console.warn('⚠️  Lead state persist failed:', persistErr.message);
+        }
+      }
+
+      // ── 13. Log the interaction ─────────────────────────────────────────────
+      if (user && automation && classification) {
         try {
           await Log.create({
             userId: user._id,
@@ -174,11 +222,10 @@ export const handleWhatsAppWebhook = async (req, res) => {
             sentiment: classification.sentiment,
             priority: classification.priority,
             action: classification.action,
-            reply,
+            reply:   replyText,
             channel: 'whatsapp',
-            from: fromNumber,
+            from:    fromNumber,
             subject: 'WhatsApp Message',
-            // Lead intelligence (scored against full conversation + AI summary)
             lead: leadData ? {
               type:    leadData.lead_type,
               score:   leadData.lead_score,
@@ -191,11 +238,12 @@ export const handleWhatsAppWebhook = async (req, res) => {
           console.warn('⚠️  Log save failed:', logErr.message);
         }
       }
+
     } catch (aiErr) {
       console.error('❌ [WhatsApp] AI processing failed:', aiErr.message);
     }
 
-    // ── 7. Respond with TwiML ─────────────────────────────────────────────────
+    // ── 14. Respond with TwiML ────────────────────────────────────────────────
     console.log(`✅ [WhatsApp] Replying to ${fromNumber}: "${replyText.slice(0, 80)}"`);
     return res.send(generateTwiMLResponse(replyText));
 

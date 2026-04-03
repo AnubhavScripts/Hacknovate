@@ -173,14 +173,41 @@ export const mockLogin = (req, res) => {
   res.json({ success: true, user: mockUser, redirectTo: '/onboarding' });
 };
 
-// ─── Get current user ────────────────────────────────────────────────────────
-export const getMe = (req, res) => {
+// ─── Get current user ─────────────────────────────────────────────────────────
+// Always fetches the full DB document so that user.lead (HOT/WARM/COLD) is
+// included in every response — not just the lean session snapshot.
+export const getMe = async (req, res) => {
+  // Passport Google session
   if (req.user) {
-    return res.json({ user: req.user });
+    try {
+      const { default: User } = await import('../models/User.js');
+      const fullUser = await User.findById(req.user._id)
+        .select('-gmailAccessToken -gmailRefreshToken')
+        .lean();
+      return res.json({ user: fullUser || req.user });
+    } catch {
+      return res.json({ user: req.user });
+    }
   }
-  if (req.session.mockUser) {
-    return res.json({ user: req.session.mockUser });
+
+  // Email / mock session
+  if (req.session?.mockUser) {
+    const sessionUser = req.session.mockUser;
+    // Skip DB lookup for pure mock ids (demo mode)
+    if (String(sessionUser._id) === 'mock_user_001') {
+      return res.json({ user: sessionUser });
+    }
+    try {
+      const { default: User } = await import('../models/User.js');
+      const fullUser = await User.findById(sessionUser._id)
+        .select('-gmailAccessToken -gmailRefreshToken')
+        .lean();
+      return res.json({ user: fullUser || sessionUser });
+    } catch {
+      return res.json({ user: sessionUser });
+    }
   }
+
   return res.status(401).json({ error: 'Not authenticated' });
 };
 

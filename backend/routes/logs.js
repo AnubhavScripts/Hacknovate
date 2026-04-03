@@ -1,5 +1,6 @@
 import express from 'express';
 import Log from '../models/Log.js';
+import User from '../models/User.js';
 
 const router = express.Router();
 
@@ -20,6 +21,64 @@ router.get('/', async (req, res) => {
   try {
     const logs = await Log.find().sort({ timestamp: -1 }).limit(50);
     res.json(logs);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /logs/leads/:userId — lead-classified logs only (HOT / WARM / COLD)
+router.get('/leads/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { type } = req.query; // optional filter: ?type=HOT
+
+    const matchQuery = userId === 'mock_user_001'
+      ? {}
+      : { userId };
+
+    if (type && ['HOT', 'WARM', 'COLD'].includes(type.toUpperCase())) {
+      matchQuery['lead.type'] = type.toUpperCase();
+    } else {
+      matchQuery['lead.type'] = { $in: ['HOT', 'WARM', 'COLD'] };
+    }
+
+    const logs = await Log.find(matchQuery)
+      .sort({ 'lead.score': -1, timestamp: -1 })
+      .limit(50)
+      .select('message type sentiment priority from channel timestamp lead reply');
+
+    res.json(logs);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /logs/lead-stats/:userId — aggregated HOT / WARM / COLD counts
+router.get('/lead-stats/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const matchQuery = userId === 'mock_user_001' ? {} : { userId };
+    matchQuery['lead.type'] = { $in: ['HOT', 'WARM', 'COLD'] };
+
+    const [logStats, userLead] = await Promise.all([
+      Log.aggregate([
+        { $match: matchQuery },
+        { $group: { _id: '$lead.type', count: { $sum: 1 }, avgScore: { $avg: '$lead.score' } } },
+      ]),
+      userId !== 'mock_user_001'
+        ? User.findById(userId).select('lead name email').lean()
+        : Promise.resolve(null),
+    ]);
+
+    const stats = { HOT: 0, WARM: 0, COLD: 0, avgScores: {} };
+    logStats.forEach(({ _id, count, avgScore }) => {
+      if (_id) {
+        stats[_id] = count;
+        stats.avgScores[_id] = Math.round(avgScore);
+      }
+    });
+
+    res.json({ stats, currentLead: userLead?.lead ?? null });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
