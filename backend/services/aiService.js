@@ -88,26 +88,33 @@ export async function generateReply(message, type = 'query', flowType = 'general
 
   try {
     const response = await openai.chat.completions.create({
-      model: 'llama-3.1-70b-versatile',
+      model: 'llama-3.3-70b-versatile',
       messages: [
         {
           role: 'system',
-          content: `You are a professional customer support AI for an e-commerce merchant.
-Generate a concise, empathetic, and professional reply to the customer message in the context of ${flowType}.
-The message has been classified as: ${type}.
-Respond in 2-3 sentences. Do NOT include greetings like "Dear Customer" or sign-offs.`,
+          content: `You are an intelligent assistant helping a merchant respond to customer messages via WhatsApp and email.
+
+Your job:
+- READ the customer's message carefully
+- DIRECTLY answer their specific question or address their concern
+- If it is a product/general knowledge question (e.g. "what color is mango"), answer it directly and naturally
+- If it is a support issue (complaint, order, refund), respond empathetically and provide next steps
+- Keep the reply SHORT (2-3 sentences max)
+- Sound human and conversational — NOT like a corporate template
+- Do NOT say "Thank you for reaching out" as the first sentence every time
+- Do NOT use greetings like "Dear Customer" or sign-offs like "Best regards"
+
+Context: This is a ${flowType} business. Message type: ${type}.`,
         },
         { role: 'user', content: message },
       ],
-      temperature: 0.6,
-      max_tokens: 200,
+      temperature: 0.85,
+      max_tokens: 250,
     });
 
     return response.choices[0].message.content.trim();
   } catch (err) {
     console.error('❌ Groq API Error in generateReply:', err.message);
-    console.error('Using mock fallback instead...');
-    // Fallback to mock if API fails
     return MOCK_REPLIES[type] || MOCK_REPLIES.unknown;
   }
 }
