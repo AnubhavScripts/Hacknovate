@@ -280,3 +280,56 @@ export async function classifyLead(summary = '', messages = '') {
     return getMockLeadClassification(summary, messages);
   }
 }
+
+// ─── generateConversationSummary ──────────────────────────────────────────────
+// Produces a 1-2 line intelligence summary of the conversation so classifyLead
+// receives real semantic context instead of just "user sent N messages".
+// @param {string} transcript - Full chronological User↔Bot conversation
+// @returns {Promise<string>}  - Short insight summary (never throws)
+
+export async function generateConversationSummary(transcript) {
+  if (!transcript || transcript.trim().length < 20) {
+    return 'Single short message. No strong context yet.';
+  }
+
+  // ── Mock: keyword-based summary when Groq is not available ────────────────
+  if (!openai) {
+    const t = transcript.toLowerCase();
+    const parts = [];
+    if (/salary|income|earn/i.test(t))           parts.push('user mentioned income/salary');
+    if (/\d[\d,]+\s*(lakh|k|rs|loan)/i.test(t)) parts.push('loan amount discussed');
+    if (/urgent|asap|today|immediately/i.test(t)) parts.push('high urgency expressed');
+    if (/apply|application/i.test(t))            parts.push('expressed intent to apply');
+    if (/document|kyc|aadhaar|pan/i.test(t))     parts.push('asked about documents');
+    if (/interest|emi|roi/i.test(t))             parts.push('queried interest/EMI');
+    if (/eligible|eligibility/i.test(t))         parts.push('asked about eligibility');
+    return parts.length > 0
+      ? `User has ${parts.join(', ')}.`
+      : 'Exploratory conversation with no strong financial intent signals yet.';
+  }
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: [
+        {
+          role: 'system',
+          content: `You are a fintech lead analyst. Summarize the following WhatsApp conversation in 1-2 lines only.
+Focus strictly on:
+- User intent (what they want)
+- Seriousness (how committed they seem)
+- Key financial details (salary, loan amount, urgency, timeline)
+Be concise and factual. Do NOT add greetings or headings.`,
+        },
+        { role: 'user', content: transcript },
+      ],
+      temperature: 0.3,
+      max_tokens: 80,
+    });
+
+    return response.choices[0].message.content.trim();
+  } catch (err) {
+    console.warn('⚠️  Summary generation failed, using fallback:', err.message);
+    return `Conversation with ${transcript.split('\n').filter(l => l.startsWith('User:')).length} user message(s). Context available but summary unavailable.`;
+  }
+}

@@ -1,6 +1,6 @@
 import twilio from 'twilio';
 import { processIncomingMessage, generateTwiMLResponse } from '../services/whatsappService.js';
-import { classifyLead } from '../services/aiService.js';
+import { classifyLead, generateConversationSummary } from '../services/aiService.js';
 import Automation from '../models/Automation.js';
 import Log from '../models/Log.js';
 import User from '../models/User.js';
@@ -89,37 +89,24 @@ export const handleWhatsAppWebhook = async (req, res) => {
 
       console.log(`📊 [WhatsApp] Classified: ${classification.type} | Priority: ${classification.priority}`);
 
-      // ── 6. Lead scoring with full conversation history ────────────────────
-      //
-      //  Problem if we only pass `incomingBody`:
-      //    - "hi"          → scored COLD  (isolated)
-      //    - "salary 60k"  → scored WARM  (isolated)
-      //    - "how to apply"→ scored HOT   (isolated — but too late, no history)
-      //
-      //  Fix: fetch the last 10 messages from this sender out of MongoDB,
-      //  reconstruct the chronological conversation, and pass the full thread.
-      //  Lead scores now accumulate correctly across multiple messages.
+      // ── 6. Lead scoring with full conversation history + AI summary ─────────
       let leadData = null;
       try {
-        // Fetch up to 10 previous messages from this sender (newest first, then reverse)
+        // a) Fetch last 10 messages from this sender, oldest first
+        //    .slice(-10) is a safety net in case the query returns more
         let conversationHistory = [];
         try {
-          const pastLogs = await Log.find({
-            from: fromNumber,
-            channel: 'whatsapp',
-          })
+          const pastLogs = await Log.find({ from: fromNumber, channel: 'whatsapp' })
             .sort({ timestamp: -1 })
             .limit(10)
             .select('message reply timestamp')
             .lean();
-
-          // Reverse so oldest message is first (chronological order)
-          conversationHistory = pastLogs.reverse();
+          conversationHistory = pastLogs.reverse().slice(-10); // oldest → newest, max 10
         } catch (histErr) {
           console.warn('⚠️  Could not fetch conversation history:', histErr.message);
         }
 
-        // Build a readable conversation transcript
+        // b) Build a User↔Bot transcript (roles matter for AI understanding)
         const transcript = conversationHistory
           .map(log => [
             `User: ${log.message}`,
@@ -127,18 +114,51 @@ export const handleWhatsAppWebhook = async (req, res) => {
           ].filter(Boolean).join('\n'))
           .join('\n');
 
-        // Append the current (newest) message at the end
+        // Append the current message at the bottom
         const fullConversation = transcript
           ? `${transcript}\nUser: ${incomingBody}`
           : `User: ${incomingBody}`;
 
-        // Build a brief summary so the classifier has full context
-        const summary = conversationHistory.length > 0
-          ? `This user has sent ${conversationHistory.length} previous message(s) in this conversation.`
-          : 'This is the user\'s first message.';
+        // c) AI-generated semantic summary (not just metadata)
+        //    e.g. "User wants a ₹5L loan urgently; shared 60k salary; asked about docs"
+        const summary = await generateConversationSummary(fullConversation);
+        console.log(`📝 [Summary] ${summary}`);
 
+        // d) Classify the lead with full context
         leadData = await classifyLead(summary, fullConversation);
         console.log(`🎯 [Lead] ${leadData.lead_type} (score: ${leadData.lead_score}) — intent: ${leadData.intent} | history: ${conversationHistory.length} prior msgs`);
+
+        // e) Compute score trend: compare against last persisted score on User
+        if (user && leadData) {
+          const prevScore = user.lead?.score ?? null;
+          const newScore  = leadData.lead_score;
+          const trend = prevScore === null    ? null
+            : newScore > prevScore + 5        ? 'increasing'
+            : newScore < prevScore - 5        ? 'decreasing'
+            :                                   'stable';
+
+          if (trend) {
+            console.log(`📈 [Lead Trend] ${prevScore} → ${newScore} (${trend})`);
+          }
+
+          // f) Persist lead state on User for instant dashboard reads
+          try {
+            await User.findByIdAndUpdate(user._id, {
+              lead: {
+                type:          leadData.lead_type,
+                score:         newScore,
+                previousScore: prevScore,
+                trend,
+                intent:        leadData.intent,
+                signals:       leadData.signals?.buying_signals ?? [],
+                reason:        leadData.reason,
+                lastInteraction: new Date(),
+              },
+            });
+          } catch (persistErr) {
+            console.warn('⚠️  Lead state persist failed:', persistErr.message);
+          }
+        }
       } catch (leadErr) {
         console.warn('⚠️  Lead classification failed:', leadErr.message);
       }
@@ -158,7 +178,7 @@ export const handleWhatsAppWebhook = async (req, res) => {
             channel: 'whatsapp',
             from: fromNumber,
             subject: 'WhatsApp Message',
-            // Lead intelligence (scored against full conversation)
+            // Lead intelligence (scored against full conversation + AI summary)
             lead: leadData ? {
               type:    leadData.lead_type,
               score:   leadData.lead_score,
