@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { icon: '⊞', label: 'Dashboard', id: 'automations' },
   { icon: '⚡', label: 'Automations', id: 'automations' },
   { icon: '📊', label: 'Analytics', id: 'analytics' },
+  { icon: '🔥', label: 'Leads', id: 'leads' },
   { icon: '🤖', label: 'Simulate AI', id: 'simulate' },
   { icon: '🔌', label: 'Escalations', id: 'escalations' },
   { icon: '👤', label: 'Settings', id: 'settings' },
@@ -114,6 +115,12 @@ const Dashboard = () => {
   const [simError, setSimError] = useState('');
   const [showSimDetails, setShowSimDetails] = useState(false);
 
+  // Lead Intelligence
+  const [conversations, setConversations]   = useState([]);
+  const [leadStats, setLeadStats]           = useState({ HOT: 0, WARM: 0, COLD: 0, avgScores: {} });
+  const [leadsLoading, setLeadsLoading]     = useState(true);
+  const [leadFilter, setLeadFilter]         = useState('ALL'); // ALL | HOT | WARM | COLD
+
   const userId = user?._id || user?.id || 'mock_user_001';
 
   useEffect(() => {
@@ -129,6 +136,16 @@ const Dashboard = () => {
     api.get(`/escalations/metrics/${userId}`)
       .then((res) => setMetrics(res.data))
       .catch(() => setMetrics(null));
+
+    // Lead / Conversation intelligence
+    api.get(`/conversations/${userId}`)
+      .then((res) => setConversations(res.data || []))
+      .catch(() => setConversations([]))
+      .finally(() => setLeadsLoading(false));
+
+    api.get(`/conversations/stats/${userId}`)
+      .then((res) => setLeadStats(res.data || { HOT: 0, WARM: 0, COLD: 0, avgScores: {} }))
+      .catch(() => {});
   }, [userId]);
 
   useEffect(() => {
@@ -547,10 +564,29 @@ const Dashboard = () => {
           {/* Analytics Section */}
           {activeNav === 'analytics' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-              {/* KPI Cards */}
-              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+              {/* Lead Intelligence KPI cards */}
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 8 }}>
+                {[{ label: 'HOT Leads 🔥', key: 'HOT', color: '#ef4444', bg: 'rgba(239,68,68,0.12)', border: 'rgba(239,68,68,0.3)' },
+                  { label: 'WARM Leads 🟠', key: 'WARM', color: '#f59e0b', bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.3)' },
+                  { label: 'COLD Leads ❄️', key: 'COLD', color: '#06b6d4', bg: 'rgba(6,182,212,0.12)', border: 'rgba(6,182,212,0.3)' },
+                ].map(({ label, key, color, bg, border }) => (
+                  <motion.div key={key}
+                    initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
+                    style={{ flex: 1, minWidth: 160, padding: '20px 18px', borderRadius: 12,
+                      background: bg, border: `1px solid ${border}` }}>
+                    <div style={{ fontSize: '0.78rem', color, fontWeight: 600, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
+                    <div style={{ fontSize: '2.2rem', fontWeight: 800, color, lineHeight: 1 }}>{leadStats[key] ?? 0}</div>
+                    {leadStats.avgScores?.[key] != null && (
+                      <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', marginTop: 6 }}>avg score {leadStats.avgScores[key]}</div>
+                    )}
+                  </motion.div>
+                ))}
                 <StatCard icon="💬" label="Total Messages" value={logs.length} color="#3b82f6" />
                 <StatCard icon="🔴" label="Escalated" value={logs.filter(l => l.escalated).length} color="#ef4444" />
+              </div>
+
+              {/* KPI Cards — existing */}
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
                 <StatCard icon="✅" label="Auto-Replied" value={logs.filter(l => l.hasReplied && !l.escalated).length} color="#10b981" />
                 <StatCard icon="📈" label="Approval Rate" value={logs.length > 0 ? ((logs.filter(l => l.hasReplied && !l.escalated).length / logs.length) * 100).toFixed(0) + '%' : '0%'} color="#f59e0b" />
               </div>
@@ -708,6 +744,161 @@ const Dashboard = () => {
                   </div>
                 </motion.div>
               )}
+            </div>
+          )}
+
+          {/* ── Leads Section ── */}
+          {activeNav === 'leads' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+
+              {/* Lead KPI pills */}
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                {[{ label: 'HOT 🔥', key: 'HOT', color: '#ef4444', bg: 'rgba(239,68,68,0.12)', border: 'rgba(239,68,68,0.3)' },
+                  { label: 'WARM 🟠', key: 'WARM', color: '#f59e0b', bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.3)' },
+                  { label: 'COLD ❄️', key: 'COLD', color: '#06b6d4', bg: 'rgba(6,182,212,0.12)', border: 'rgba(6,182,212,0.3)' },
+                ].map(({ label, key, color, bg, border }) => (
+                  <motion.div key={key} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
+                    style={{ padding: '16px 24px', borderRadius: 12, background: bg, border: `1px solid ${border}`,
+                      textAlign: 'center', minWidth: 130 }}>
+                    <div style={{ fontSize: '0.75rem', color, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>{label}</div>
+                    <div style={{ fontSize: '2rem', fontWeight: 800, color }}>{leadStats[key] ?? 0}</div>
+                    <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>avg {leadStats.avgScores?.[key] ?? '—'}</div>
+                  </motion.div>
+                ))}
+              </div>
+
+              {/* Filter chips */}
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <span style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)' }}>Filter:</span>
+                {['ALL', 'HOT', 'WARM', 'COLD'].map(f => (
+                  <button key={f} onClick={() => setLeadFilter(f)} style={{
+                    padding: '4px 14px', borderRadius: 20, border: '1px solid',
+                    borderColor: leadFilter === f ? '#7c3aed' : 'rgba(255,255,255,0.1)',
+                    background: leadFilter === f ? 'rgba(124,58,237,0.2)' : 'transparent',
+                    color: leadFilter === f ? '#a78bfa' : 'rgba(255,255,255,0.5)',
+                    fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                  }}>{f}</button>
+                ))}
+              </div>
+
+              {/* Customer conversation table */}
+              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+                style={{ padding: '24px', borderRadius: 12, background: 'rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(255,255,255,0.1)', backdropFilter: 'blur(10px)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+                  <div>
+                    <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: 2 }}>Customer Conversations</h3>
+                    <p style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)' }}>One row per WhatsApp number — powered by AI conversation intelligence</p>
+                  </div>
+                  <span style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.4)' }}>{conversations.length} customer{conversations.length !== 1 ? 's' : ''}</span>
+                </div>
+
+                {leadsLoading ? (
+                  <div style={{ textAlign: 'center', padding: '40px 0', color: 'rgba(255,255,255,0.4)' }}>Loading conversations...</div>
+                ) : conversations.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '48px 0' }}>
+                    <div style={{ fontSize: 36, marginBottom: 10 }}>📱</div>
+                    <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.9rem' }}>No WhatsApp conversations yet.</div>
+                    <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.78rem', marginTop: 4 }}>Send a message to your Twilio sandbox number to get started.</div>
+                  </div>
+                ) : (
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.83rem' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                          {['Customer', 'Lead', 'Score', 'Intent', 'AI Summary', 'Last Message', 'Msgs', 'Last Seen'].map(h => (
+                            <th key={h} style={{ textAlign: 'left', padding: '8px 12px',
+                              color: 'rgba(255,255,255,0.4)', fontWeight: 500, fontSize: '0.72rem',
+                              textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <AnimatePresence>
+                          {conversations
+                            .filter(c => leadFilter === 'ALL' || c.lead?.type === leadFilter)
+                            .map((conv, i) => {
+                              const lt = conv.lead?.type;
+                              const badgeColor   = lt === 'HOT' ? '#ef4444' : lt === 'WARM' ? '#f59e0b' : lt === 'COLD' ? '#06b6d4' : '#64748b';
+                              const badgeBg      = lt === 'HOT' ? 'rgba(239,68,68,0.15)' : lt === 'WARM' ? 'rgba(245,158,11,0.15)' : lt === 'COLD' ? 'rgba(6,182,212,0.15)' : 'rgba(100,116,139,0.15)';
+                              const scoreColor   = (conv.lead?.score ?? 0) >= 70 ? '#ef4444' : (conv.lead?.score ?? 0) >= 40 ? '#f59e0b' : '#06b6d4';
+                              const phone        = (conv.conversationId || '').replace('whatsapp:', '');
+                              return (
+                                <motion.tr key={conv._id || i}
+                                  initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+                                  transition={{ delay: i * 0.03 }}
+                                  style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+
+                                  {/* Customer phone */}
+                                  <td style={{ padding: '12px', whiteSpace: 'nowrap' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                      <div style={{ width: 28, height: 28, borderRadius: '50%',
+                                        background: `${badgeColor}20`, display: 'flex', alignItems: 'center',
+                                        justifyContent: 'center', fontSize: 12, color: badgeColor, fontWeight: 700 }}>
+                                        {(lt || '?')[0]}
+                                      </div>
+                                      <span style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: 'rgba(255,255,255,0.8)' }}>
+                                        {phone || 'unknown'}
+                                      </span>
+                                    </div>
+                                  </td>
+
+                                  {/* Lead badge */}
+                                  <td style={{ padding: '12px' }}>
+                                    <span style={{ padding: '3px 10px', borderRadius: 5,
+                                      background: badgeBg, color: badgeColor,
+                                      fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.04em' }}>
+                                      {lt || '—'}
+                                    </span>
+                                  </td>
+
+                                  {/* Score bar */}
+                                  <td style={{ padding: '12px', whiteSpace: 'nowrap' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                      <div style={{ width: 48, height: 5, borderRadius: 3, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+                                        <div style={{ width: `${conv.lead?.score ?? 0}%`, height: '100%',
+                                          background: scoreColor, borderRadius: 3, transition: 'width 0.4s' }} />
+                                      </div>
+                                      <span style={{ fontSize: '0.78rem', color: scoreColor, fontWeight: 600 }}>{conv.lead?.score ?? '—'}</span>
+                                    </div>
+                                  </td>
+
+                                  {/* Intent */}
+                                  <td style={{ padding: '12px', color: 'rgba(255,255,255,0.6)', whiteSpace: 'nowrap', fontSize: '0.78rem' }}>
+                                    {(conv.lead?.intent || '—').replace(/_/g, ' ')}
+                                  </td>
+
+                                  {/* AI Summary */}
+                                  <td style={{ padding: '12px', maxWidth: 260, color: 'rgba(255,255,255,0.75)', fontSize: '0.78rem' }}>
+                                    <span title={conv.summary || ''}>
+                                      {conv.summary ? (conv.summary.length > 80 ? conv.summary.slice(0, 80) + '…' : conv.summary) : <span style={{ color: 'rgba(255,255,255,0.25)' }}>No summary yet</span>}
+                                    </span>
+                                  </td>
+
+                                  {/* Last message */}
+                                  <td style={{ padding: '12px', maxWidth: 180, color: 'rgba(255,255,255,0.55)', fontSize: '0.78rem',
+                                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {conv.lastMessage || '—'}
+                                  </td>
+
+                                  {/* Message count */}
+                                  <td style={{ padding: '12px', textAlign: 'center', color: 'rgba(255,255,255,0.5)', fontSize: '0.78rem' }}>
+                                    {conv.totalMessages ?? 0}
+                                  </td>
+
+                                  {/* Last seen */}
+                                  <td style={{ padding: '12px', color: 'rgba(255,255,255,0.35)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>
+                                    {conv.lastMessageAt ? new Date(conv.lastMessageAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
+                                  </td>
+                                </motion.tr>
+                              );
+                            })}
+                        </AnimatePresence>
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </motion.div>
             </div>
           )}
 

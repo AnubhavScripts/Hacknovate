@@ -38,18 +38,26 @@ export async function classifyMessage(message, flowType = 'general') {
     return getMockClassification(message);
   }
 
-  const systemPrompt = `You are an AI classifier for a merchant customer support platform.
+  const systemPrompt = `You are an AI classifier for a business messaging platform.
 
-Your job is to determine if the message is a valid customer support message.
+Your job is to determine if the message is a valid business-related message.
 
 Valid message types:
 - "complaint": Customer has a problem, bad experience, or wants a refund
-- "query": Customer is asking about a product, service, pricing, or general info related to the business
+- "query": Customer is asking about a product, service, pricing, loans, eligibility, documents, interest rates, or any general business info
 - "order": Customer asking about order status, delivery, tracking
 - "cancellation": Customer wants to cancel an order or subscription
 
-If the message is NOT related to customer support (e.g. random questions, jokes, general knowledge, greetings only, spam, gibberish), classify it as:
-- type: "invalid"
+CRITICAL RULE — SHORT CONVERSATIONAL MESSAGES:
+If the message is a short reply that continues an ongoing conversation — such as:
+"yes", "ok", "hmm", "sure", "done", "will do", "haan", "okay", "got it", "alright", "yep", "nope", "no", "maybe"
+→ DO NOT classify as "invalid"
+→ Classify as: type "query", priority "low"
+These are conversation continuations, not invalid messages.
+
+IMPORTANT: If the message is related to financial services, loans, credit, EMI, salary, eligibility → always classify as "query", never "invalid".
+
+Only classify as "invalid" if the message is completely off-topic with zero business relevance: unrelated jokes, trivia, pure spam, or total gibberish with no conversational context.
 
 Respond ONLY with valid JSON in this exact format:
 {
@@ -73,7 +81,6 @@ Context: This is a ${flowType} business.`;
     });
 
     const raw = response.choices[0].message.content.trim();
-    // Safe JSON parse — handle cases where model adds extra text
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     return jsonMatch ? JSON.parse(jsonMatch[0]) : getMockClassification(message);
   } catch (err) {
@@ -92,36 +99,118 @@ const MOCK_REPLIES = {
   unknown: "Please send a valid customer support message related to your orders, complaints, or queries about our products/services.",
 };
 
-export async function generateReply(message, type = 'query', flowType = 'general') {
-  // ── If message is invalid/irrelevant, reject immediately without AI call ──
-  if (type === 'invalid') {
+/**
+ * generateReply
+ * @param {string} message        - Current user message
+ * @param {string} type           - Classified message type
+ * @param {string} flowType       - 'sales' | 'support' | 'general'
+ * @param {object} context        - { knownSalary, knownLoanAmount, convoText }
+ */
+export async function generateReply(message, type = 'query', flowType = 'general', context = {}) {
+  const { knownSalary = null, knownLoanAmount = null, convoText = '' } = context;
+
+  // ── If message is invalid/irrelevant in support mode, reject immediately ──
+  if (type === 'invalid' && flowType !== 'sales') {
     return MOCK_REPLIES.invalid;
   }
 
   if (!openai) {
     await new Promise(r => setTimeout(r, 300));
+
+    // Mock sales replies with personalization
+    if (flowType === 'sales') {
+      const lower = message.toLowerCase();
+      if (/\bhi\b|hello|hey/i.test(lower)) return "Hey! Are you looking for a loan or just exploring options?";
+      if (/loan|borrow|credit/i.test(lower)) {
+        if (knownLoanAmount) return `Got it — ₹${(knownLoanAmount / 100000).toFixed(1)} lakh. What's your monthly salary?`;
+        return "Sure — how much loan are you looking for and what's your monthly salary?";
+      }
+      if (/document|kyc|aadhaar|pan/i.test(lower)) return "You'll need Aadhaar & PAN. Are you planning to apply soon?";
+      if (/interest|emi|rate/i.test(lower)) return "Our interest rates start from 10.5% p.a. Want me to check your eligibility?";
+      if (/eligible|eligibility/i.test(lower)) return "Eligibility depends on your salary and credit score. What's your monthly income?";
+      return "Got it! Could you tell me your loan requirement and monthly salary so I can help better?";
+    }
+
     return MOCK_REPLIES[type] || MOCK_REPLIES.unknown;
+  }
+
+  // ── Build system prompt based on flowType ──────────────────────────────────
+  let systemPrompt = "";
+
+  // 🟢 SALES MODE (Loans / Fintech)
+  if (flowType === "sales") {
+    // Build what we already know about this user for personalization
+    const knownFacts = [];
+    if (knownLoanAmount) knownFacts.push(`loan amount: ₹${(knownLoanAmount / 100000).toFixed(1)} lakh`);
+    if (knownSalary)     knownFacts.push(`monthly salary: ₹${knownSalary.toLocaleString('en-IN')}`);
+    const knownContext = knownFacts.length > 0
+      ? `\nKnown user info: ${knownFacts.join(', ')}. Use this — DO NOT ask for info already provided.`
+      : '';
+
+    // Track what has already been asked in this conversation
+    const alreadyAskedSalary     = /salary|income|earn/i.test(convoText);
+    const alreadyAskedLoanAmount = /how much|loan amount|kितना/i.test(convoText);
+    const avoidAsking = [];
+    if (alreadyAskedSalary || knownSalary)         avoidAsking.push('salary (already asked or known)');
+    if (alreadyAskedLoanAmount || knownLoanAmount)  avoidAsking.push('loan amount (already asked or known)');
+    const avoidContext = avoidAsking.length > 0
+      ? `\nDO NOT ask again about: ${avoidAsking.join(', ')}.`
+      : '';
+
+    systemPrompt = `You are a friendly fintech assistant helping users get loans.
+
+Your goal:
+- Understand the user's loan needs
+- Ask smart ONE follow-up question at a time
+- Guide them toward applying
+${knownContext}${avoidContext}
+
+Rules:
+- Be conversational and human-like
+- Keep replies to 1–2 lines max
+- Reference known info naturally (e.g. "Got it — ₹5 lakh...")
+- Ask only ONE question per reply, not multiple
+- If both salary and loan amount are known → tell them they're likely eligible and ask if they want to proceed
+
+Examples:
+User: "I want loan" → "Sure — how much loan are you looking for?"
+User: "5 lakh" → "Got it — ₹5 lakh. What's your monthly salary?"
+User: "60k" → "Perfect — you're likely eligible! Want me to guide you through the application?"
+User: "What documents?" → "You'll need Aadhaar & PAN. Are you planning to apply soon?"
+User: "Hi" → "Hey! Are you looking for a loan or just exploring options?"
+
+DO NOT reject any message. DO NOT say "invalid query".`;
+  }
+
+  // 🔵 SUPPORT MODE (E-commerce / Customer Support)
+  else if (flowType === "support") {
+    systemPrompt = `You are a customer support assistant.
+
+Your job:
+- Handle orders, complaints, refunds, queries
+
+Rules:
+- Be helpful and concise
+- Answer the customer's question directly
+- Keep replies to 2-3 sentences max
+- Sound human, not corporate
+- Do NOT start with "Thank you for reaching out"
+- Do NOT use "Dear Customer" or "Best regards"
+
+Message type: ${type}`;
+  }
+
+  // ⚪ DEFAULT / GENERAL
+  else {
+    systemPrompt = `You are a helpful assistant.
+Reply naturally and concisely in 1-2 sentences.`;
   }
 
   try {
     const response = await openai.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
       messages: [
-        {
-          role: 'system',
-          content: `You are a customer support assistant for a ${flowType} business.
-
-Rules:
-- ONLY respond to messages related to: orders, complaints, refunds, cancellations, product/service queries
-- If the message is irrelevant, off-topic, or not a customer support question, reply ONLY with: "Please send a valid customer support message related to your orders, complaints, or queries about our products/services."
-- READ the customer message carefully and answer their specific question directly
-- Keep replies SHORT (2-3 sentences max)
-- Sound human and conversational, NOT corporate
-- Do NOT start with "Thank you for reaching out"
-- Do NOT use "Dear Customer" or "Best regards"
-
-Message type classified as: ${type}`,
-        },
+        { role: 'system', content: systemPrompt },
         { role: 'user', content: message },
       ],
       temperature: 0.7,
@@ -131,20 +220,17 @@ Message type classified as: ${type}`,
     return response.choices[0].message.content.trim();
   } catch (err) {
     console.error('❌ Groq Reply Error:', err.message);
+    if (flowType === 'sales') {
+      return "Got it! Could you tell me your loan requirement and monthly salary so I can help better?";
+    }
     return MOCK_REPLIES[type] || MOCK_REPLIES.unknown;
   }
 }
 
 // ─── classifyLead ─────────────────────────────────────────────────────────────
-// Fintech-specific WhatsApp lead scorer (HOT / WARM / COLD)
-// @param {string} summary   - Conversation summary
-// @param {string} messages  - Recent raw messages (plain text or JSON string)
-// @returns {Promise<object>} - Strict JSON matching the lead schema
-
 function getMockLeadClassification(summary = '', messages = '') {
   const text = `${summary} ${messages}`.toLowerCase();
 
-  // Detect buying signals
   const signals = [];
   let score = 10;
 
@@ -159,7 +245,6 @@ function getMockLeadClassification(summary = '', messages = '') {
 
   const lead_type = score >= 70 ? 'HOT' : score >= 40 ? 'WARM' : 'COLD';
 
-  // Detect intent
   let intent = 'just_exploring';
   if (/apply|application/i.test(text))       intent = 'loan_application';
   else if (/document|kyc/i.test(text))       intent = 'document_requirement';
@@ -168,7 +253,6 @@ function getMockLeadClassification(summary = '', messages = '') {
   else if (/loan|borrow|credit/i.test(text)) intent = 'loan_inquiry';
   else if (/repay|due|emi missed/i.test(text)) intent = 'repayment_query';
 
-  // Extract loan amount / salary (basic regex)
   const loanMatch = text.match(/(\d[\d,]+)\s*(lakh|l\b)/i);
   const salaryMatch = text.match(/salary[^\d]*(\d[\d,]+)/i);
   const loan_amount = loanMatch
@@ -246,7 +330,6 @@ salary_provided | loan_amount_mentioned | urgent_need | asked_application_proces
 }`;
 
 export async function classifyLead(summary = '', messages = '') {
-  // ── Mock mode ──────────────────────────────────────────────────────────────
   if (!openai) {
     await new Promise(r => setTimeout(r, 400));
     return getMockLeadClassification(summary, messages);
@@ -282,17 +365,11 @@ export async function classifyLead(summary = '', messages = '') {
 }
 
 // ─── generateConversationSummary ──────────────────────────────────────────────
-// Produces a 1-2 line intelligence summary of the conversation so classifyLead
-// receives real semantic context instead of just "user sent N messages".
-// @param {string} transcript - Full chronological User↔Bot conversation
-// @returns {Promise<string>}  - Short insight summary (never throws)
-
 export async function generateConversationSummary(transcript) {
   if (!transcript || transcript.trim().length < 20) {
     return 'Single short message. No strong context yet.';
   }
 
-  // ── Mock: keyword-based summary when Groq is not available ────────────────
   if (!openai) {
     const t = transcript.toLowerCase();
     const parts = [];

@@ -6,7 +6,7 @@ const logSchema = new mongoose.Schema({
   message: { type: String, required: true },
   type: {
     type: String,
-    enum: ['complaint', 'query', 'order', 'cancellation', 'invalid', 'unknown'],
+    enum: ['complaint', 'query', 'order', 'cancellation', 'invalid', 'conversation', 'unknown'],
     default: 'unknown',
   },
   subject: { type: String, default: '' },
@@ -46,7 +46,8 @@ const logSchema = new mongoose.Schema({
   },
   
   // ✨ NEW: Conversation threading
-  conversationId: { type: String, default: '' }, // Gmail threadId or WhatsApp chatId
+  conversationId: { type: String, default: '' }, // Gmail threadId or WhatsApp chatId (fromNumber)
+  conversationSummary: { type: String, default: '' }, // AI-generated summary at time of log
   inReplyTo: { type: mongoose.Schema.Types.ObjectId, ref: 'Log', default: null },
   hasReplied: { type: Boolean, default: false },
 
