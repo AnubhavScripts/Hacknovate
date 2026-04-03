@@ -89,11 +89,56 @@ export const handleWhatsAppWebhook = async (req, res) => {
 
       console.log(`📊 [WhatsApp] Classified: ${classification.type} | Priority: ${classification.priority}`);
 
-      // ── 6. Lead scoring ───────────────────────────────────────────────────
+      // ── 6. Lead scoring with full conversation history ────────────────────
+      //
+      //  Problem if we only pass `incomingBody`:
+      //    - "hi"          → scored COLD  (isolated)
+      //    - "salary 60k"  → scored WARM  (isolated)
+      //    - "how to apply"→ scored HOT   (isolated — but too late, no history)
+      //
+      //  Fix: fetch the last 10 messages from this sender out of MongoDB,
+      //  reconstruct the chronological conversation, and pass the full thread.
+      //  Lead scores now accumulate correctly across multiple messages.
       let leadData = null;
       try {
-        leadData = await classifyLead('', incomingBody);
-        console.log(`🎯 [Lead] ${leadData.lead_type} (score: ${leadData.lead_score}) — intent: ${leadData.intent}`);
+        // Fetch up to 10 previous messages from this sender (newest first, then reverse)
+        let conversationHistory = [];
+        try {
+          const pastLogs = await Log.find({
+            from: fromNumber,
+            channel: 'whatsapp',
+          })
+            .sort({ timestamp: -1 })
+            .limit(10)
+            .select('message reply timestamp')
+            .lean();
+
+          // Reverse so oldest message is first (chronological order)
+          conversationHistory = pastLogs.reverse();
+        } catch (histErr) {
+          console.warn('⚠️  Could not fetch conversation history:', histErr.message);
+        }
+
+        // Build a readable conversation transcript
+        const transcript = conversationHistory
+          .map(log => [
+            `User: ${log.message}`,
+            log.reply ? `Bot: ${log.reply}` : null,
+          ].filter(Boolean).join('\n'))
+          .join('\n');
+
+        // Append the current (newest) message at the end
+        const fullConversation = transcript
+          ? `${transcript}\nUser: ${incomingBody}`
+          : `User: ${incomingBody}`;
+
+        // Build a brief summary so the classifier has full context
+        const summary = conversationHistory.length > 0
+          ? `This user has sent ${conversationHistory.length} previous message(s) in this conversation.`
+          : 'This is the user\'s first message.';
+
+        leadData = await classifyLead(summary, fullConversation);
+        console.log(`🎯 [Lead] ${leadData.lead_type} (score: ${leadData.lead_score}) — intent: ${leadData.intent} | history: ${conversationHistory.length} prior msgs`);
       } catch (leadErr) {
         console.warn('⚠️  Lead classification failed:', leadErr.message);
       }
@@ -113,13 +158,13 @@ export const handleWhatsAppWebhook = async (req, res) => {
             channel: 'whatsapp',
             from: fromNumber,
             subject: 'WhatsApp Message',
-            // Lead intelligence
+            // Lead intelligence (scored against full conversation)
             lead: leadData ? {
-              type:   leadData.lead_type,
-              score:  leadData.lead_score,
-              intent: leadData.intent,
+              type:    leadData.lead_type,
+              score:   leadData.lead_score,
+              intent:  leadData.intent,
               signals: leadData.signals?.buying_signals ?? [],
-              reason: leadData.reason,
+              reason:  leadData.reason,
             } : undefined,
           });
         } catch (logErr) {
