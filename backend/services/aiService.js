@@ -5,7 +5,8 @@ const hasGroqKey =
   process.env.GROK_API_KEY !== 'your_grok_api_key' &&
   process.env.GROK_API_KEY.length > 10;
 
-// Initialize Groq API client (uses OpenAI SDK compatible endpoint)
+console.log('🤖 Groq status:', hasGroqKey ? '✅ Connected' : '❌ Missing key - mock mode');
+
 const openai = hasGroqKey ? new OpenAI({ 
   apiKey: process.env.GROK_API_KEY,
   baseURL: 'https://api.groq.com/openai/v1'
@@ -19,7 +20,7 @@ const MOCK_CLASSIFICATIONS = {
   broken: { type: 'complaint', sentiment: 'negative', priority: 'urgent', action: 'Escalate to quality team and arrange replacement or refund' },
   how: { type: 'query', sentiment: 'neutral', priority: 'low', action: 'Send relevant product documentation and FAQ link' },
   help: { type: 'query', sentiment: 'neutral', priority: 'medium', action: 'Route to customer support team for personalised assistance' },
-  default: { type: 'query', sentiment: 'neutral', priority: 'medium', action: 'Review and route to appropriate support team' },
+  default: { type: 'invalid', sentiment: 'neutral', priority: 'low', action: 'Message is not a valid customer support query' },
 };
 
 function getMockClassification(message) {
@@ -33,54 +34,70 @@ function getMockClassification(message) {
 // ─── classifyMessage ──────────────────────────────────────────────────────────
 export async function classifyMessage(message, flowType = 'general') {
   if (!openai) {
-    // Simulate a short delay for realism
     await new Promise(r => setTimeout(r, 400));
     return getMockClassification(message);
   }
 
-  const systemPrompt = `You are an AI assistant for a merchant automation platform.
-Analyse the customer message in the context of ${flowType} and respond ONLY with valid JSON in this exact format:
+  const systemPrompt = `You are an AI classifier for a merchant customer support platform.
+
+Your job is to determine if the message is a valid customer support message.
+
+Valid message types:
+- "complaint": Customer has a problem, bad experience, or wants a refund
+- "query": Customer is asking about a product, service, pricing, or general info related to the business
+- "order": Customer asking about order status, delivery, tracking
+- "cancellation": Customer wants to cancel an order or subscription
+
+If the message is NOT related to customer support (e.g. random questions, jokes, general knowledge, greetings only, spam, gibberish), classify it as:
+- type: "invalid"
+
+Respond ONLY with valid JSON in this exact format:
 {
-  "type": "complaint" | "query" | "order" | "cancellation",
+  "type": "complaint" | "query" | "order" | "cancellation" | "invalid",
   "sentiment": "positive" | "neutral" | "negative",
   "priority": "low" | "medium" | "high" | "urgent",
-  "action": "<a brief recommended action for the merchant>"
-}`;
+  "action": "<brief recommended action>"
+}
+
+Context: This is a ${flowType} business.`;
 
   try {
     const response = await openai.chat.completions.create({
-      model: 'llama-3.1-70b-versatile',
+      model: 'llama-3.3-70b-versatile',
       messages: [
-        {
-          role: 'system',
-          content: systemPrompt,
-        },
+        { role: 'system', content: systemPrompt },
         { role: 'user', content: message },
       ],
-      temperature: 0.3,
+      temperature: 0.2,
       max_tokens: 200,
     });
 
     const raw = response.choices[0].message.content.trim();
-    return JSON.parse(raw);
+    // Safe JSON parse — handle cases where model adds extra text
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    return jsonMatch ? JSON.parse(jsonMatch[0]) : getMockClassification(message);
   } catch (err) {
-    console.error('❌ Groq API Error:', err.message);
-    console.error('Using mock fallback instead...');
-    // Fallback to mock if API fails
+    console.error('❌ Groq Classification Error:', err.message);
     return getMockClassification(message);
   }
 }
 
 // ─── generateReply ────────────────────────────────────────────────────────────
 const MOCK_REPLIES = {
-  cancellation: "Thank you for reaching out. We've received your cancellation request and are processing it immediately. You'll receive a confirmation email within the next 15 minutes. We're sorry to see you go and hope to serve you better in the future.",
-  complaint: "We sincerely apologise for the inconvenience you've experienced. Your feedback is extremely important to us, and we are taking immediate action to resolve this issue. A member of our team will contact you within 2 hours with a resolution.",
-  order: "Thank you for your patience! Your order is currently being processed and is on its way. You can track your shipment in real-time using the tracking link we've sent to your registered email. Expected delivery: 2-3 business days.",
-  query: "Thank you for your question! Our team is happy to help. We've reviewed your query and will provide a detailed response within the next hour. In the meantime, you can find quick answers in our Help Centre.",
-  unknown: "Thank you for reaching out to us. We've received your message and a member of our support team will get back to you shortly. We appreciate your patience.",
+  cancellation: "We've received your cancellation request and are processing it immediately. You'll get a confirmation within 15 minutes.",
+  complaint: "We're sorry for the inconvenience. Our team is looking into this and will get back to you within 2 hours with a resolution.",
+  order: "Your order is on its way! You can track it using the link sent to your registered email. Expected delivery: 2-3 business days.",
+  query: "Happy to help! Could you share a bit more detail so we can give you the most accurate answer?",
+  invalid: "Please send a valid customer support message related to your orders, complaints, or queries about our products/services.",
+  unknown: "Please send a valid customer support message related to your orders, complaints, or queries about our products/services.",
 };
 
 export async function generateReply(message, type = 'query', flowType = 'general') {
+  // ── If message is invalid/irrelevant, reject immediately without AI call ──
+  if (type === 'invalid') {
+    return MOCK_REPLIES.invalid;
+  }
+
   if (!openai) {
     await new Promise(r => setTimeout(r, 300));
     return MOCK_REPLIES[type] || MOCK_REPLIES.unknown;
@@ -92,29 +109,28 @@ export async function generateReply(message, type = 'query', flowType = 'general
       messages: [
         {
           role: 'system',
-          content: `You are an intelligent assistant helping a merchant respond to customer messages via WhatsApp and email.
+          content: `You are a customer support assistant for a ${flowType} business.
 
-Your job:
-- READ the customer's message carefully
-- DIRECTLY answer their specific question or address their concern
-- If it is a product/general knowledge question (e.g. "what color is mango"), answer it directly and naturally
-- If it is a support issue (complaint, order, refund), respond empathetically and provide next steps
-- Keep the reply SHORT (2-3 sentences max)
-- Sound human and conversational — NOT like a corporate template
-- Do NOT say "Thank you for reaching out" as the first sentence every time
-- Do NOT use greetings like "Dear Customer" or sign-offs like "Best regards"
+Rules:
+- ONLY respond to messages related to: orders, complaints, refunds, cancellations, product/service queries
+- If the message is irrelevant, off-topic, or not a customer support question, reply ONLY with: "Please send a valid customer support message related to your orders, complaints, or queries about our products/services."
+- READ the customer message carefully and answer their specific question directly
+- Keep replies SHORT (2-3 sentences max)
+- Sound human and conversational, NOT corporate
+- Do NOT start with "Thank you for reaching out"
+- Do NOT use "Dear Customer" or "Best regards"
 
-Context: This is a ${flowType} business. Message type: ${type}.`,
+Message type classified as: ${type}`,
         },
         { role: 'user', content: message },
       ],
-      temperature: 0.85,
+      temperature: 0.7,
       max_tokens: 250,
     });
 
     return response.choices[0].message.content.trim();
   } catch (err) {
-    console.error('❌ Groq API Error in generateReply:', err.message);
+    console.error('❌ Groq Reply Error:', err.message);
     return MOCK_REPLIES[type] || MOCK_REPLIES.unknown;
   }
 }
