@@ -1,5 +1,6 @@
 import twilio from 'twilio';
 import { processIncomingMessage, generateTwiMLResponse } from '../services/whatsappService.js';
+import { classifyLead } from '../services/aiService.js';
 import Automation from '../models/Automation.js';
 import Log from '../models/Log.js';
 import User from '../models/User.js';
@@ -88,7 +89,16 @@ export const handleWhatsAppWebhook = async (req, res) => {
 
       console.log(`📊 [WhatsApp] Classified: ${classification.type} | Priority: ${classification.priority}`);
 
-      // ── 6. Log the interaction ────────────────────────────────────────────
+      // ── 6. Lead scoring ───────────────────────────────────────────────────
+      let leadData = null;
+      try {
+        leadData = await classifyLead('', incomingBody);
+        console.log(`🎯 [Lead] ${leadData.lead_type} (score: ${leadData.lead_score}) — intent: ${leadData.intent}`);
+      } catch (leadErr) {
+        console.warn('⚠️  Lead classification failed:', leadErr.message);
+      }
+
+      // ── 7. Log the interaction ────────────────────────────────────────────
       if (user && automation) {
         try {
           await Log.create({
@@ -103,6 +113,14 @@ export const handleWhatsAppWebhook = async (req, res) => {
             channel: 'whatsapp',
             from: fromNumber,
             subject: 'WhatsApp Message',
+            // Lead intelligence
+            lead: leadData ? {
+              type:   leadData.lead_type,
+              score:  leadData.lead_score,
+              intent: leadData.intent,
+              signals: leadData.signals?.buying_signals ?? [],
+              reason: leadData.reason,
+            } : undefined,
           });
         } catch (logErr) {
           console.warn('⚠️  Log save failed:', logErr.message);

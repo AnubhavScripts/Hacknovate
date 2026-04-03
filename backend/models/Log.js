@@ -6,9 +6,10 @@ const logSchema = new mongoose.Schema({
   message: { type: String, required: true },
   type: {
     type: String,
-    enum: ['complaint', 'query', 'order', 'cancellation', 'unknown'],
+    enum: ['complaint', 'query', 'order', 'cancellation', 'invalid', 'unknown'],
     default: 'unknown',
   },
+  subject: { type: String, default: '' },
   sentiment: {
     type: String,
     enum: ['positive', 'neutral', 'negative'],
@@ -48,7 +49,16 @@ const logSchema = new mongoose.Schema({
   conversationId: { type: String, default: '' }, // Gmail threadId or WhatsApp chatId
   inReplyTo: { type: mongoose.Schema.Types.ObjectId, ref: 'Log', default: null },
   hasReplied: { type: Boolean, default: false },
-  
+
+  // ✨ NEW: Fintech lead intelligence (HOT / WARM / COLD)
+  lead: {
+    type:    { type: String, enum: ['HOT', 'WARM', 'COLD'], default: null },
+    score:   { type: Number, min: 0, max: 100,              default: null },
+    intent:  { type: String, default: null },
+    signals: [{ type: String }],
+    reason:  { type: String, default: null },
+  },
+
   timestamp: { type: Date, default: Date.now },
 }, { timestamps: true });
 

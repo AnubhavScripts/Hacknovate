@@ -134,3 +134,149 @@ Message type classified as: ${type}`,
     return MOCK_REPLIES[type] || MOCK_REPLIES.unknown;
   }
 }
+
+// ─── classifyLead ─────────────────────────────────────────────────────────────
+// Fintech-specific WhatsApp lead scorer (HOT / WARM / COLD)
+// @param {string} summary   - Conversation summary
+// @param {string} messages  - Recent raw messages (plain text or JSON string)
+// @returns {Promise<object>} - Strict JSON matching the lead schema
+
+function getMockLeadClassification(summary = '', messages = '') {
+  const text = `${summary} ${messages}`.toLowerCase();
+
+  // Detect buying signals
+  const signals = [];
+  let score = 10;
+
+  if (/salary|income|earn/i.test(text))         { signals.push('salary_provided');          score += 20; }
+  if (/\d[\d,]+\s*(lakh|k|rs|rupee|loan)/i.test(text)) { signals.push('loan_amount_mentioned'); score += 20; }
+  if (/urgent|asap|immediately|today|now/i.test(text))  { signals.push('urgent_need');           score += 20; }
+  if (/how to apply|application|apply/i.test(text))     { signals.push('asked_application_process'); score += 15; }
+  if (/document|kyc|aadhaar|pan/i.test(text))           { signals.push('asked_documents');       score += 15; }
+  if (/interest rate|roi|emi/i.test(text))               { signals.push('asked_interest_rate');   score += 10; }
+
+  score = Math.min(score, 100);
+
+  const lead_type = score >= 70 ? 'HOT' : score >= 40 ? 'WARM' : 'COLD';
+
+  // Detect intent
+  let intent = 'just_exploring';
+  if (/apply|application/i.test(text))       intent = 'loan_application';
+  else if (/document|kyc/i.test(text))       intent = 'document_requirement';
+  else if (/interest|emi|roi/i.test(text))   intent = 'interest_rate_query';
+  else if (/eligible|eligibility/i.test(text)) intent = 'eligibility_check';
+  else if (/loan|borrow|credit/i.test(text)) intent = 'loan_inquiry';
+  else if (/repay|due|emi missed/i.test(text)) intent = 'repayment_query';
+
+  // Extract loan amount / salary (basic regex)
+  const loanMatch = text.match(/(\d[\d,]+)\s*(lakh|l\b)/i);
+  const salaryMatch = text.match(/salary[^\d]*(\d[\d,]+)/i);
+  const loan_amount = loanMatch
+    ? parseInt(loanMatch[1].replace(/,/g, '')) * (loanMatch[2].toLowerCase().startsWith('l') ? 100000 : 1)
+    : null;
+  const salary = salaryMatch ? parseInt(salaryMatch[1].replace(/,/g, '')) : null;
+
+  const urgencyLevel = signals.includes('urgent_need') ? 'high'
+    : signals.length >= 2 ? 'medium' : 'low';
+
+  return {
+    lead_type,
+    lead_score: score,
+    intent,
+    confidence: parseFloat((score / 100).toFixed(2)),
+    signals: {
+      urgency: urgencyLevel,
+      seriousness: signals.length >= 3 ? 'high' : signals.length >= 1 ? 'medium' : 'low',
+      buying_signals: signals,
+    },
+    entities: {
+      loan_amount,
+      salary,
+      timeline: signals.includes('urgent_need') ? 'immediate' : 'unknown',
+    },
+    reason: `Mock classification: ${signals.length} buying signal(s) detected. Score: ${score}.`,
+  };
+}
+
+const LEAD_SYSTEM_PROMPT = `You are an AI system for a fintech platform that analyzes WhatsApp conversations to classify users into lead categories.
+
+Classify the user as: HOT lead (high probability of conversion), WARM lead (moderate interest), or COLD lead (low intent).
+
+Classify based on: intent, urgency, seriousness, and buying signals. Use full conversation context, not just the last message.
+
+### INTENTS (STRICT — use exactly one):
+loan_inquiry | loan_application | eligibility_check | interest_rate_query | document_requirement | repayment_query | just_exploring | irrelevant
+
+### CLASSIFICATION LOGIC:
+🔥 HOT: Clear intent to apply OR mentions salary/loan amount AND shows urgency OR asks process/docs
+🙂 WARM: Interested but not committed — asking about eligibility, interest, options
+❄️ COLD: Vague / exploratory / low intent / short or irrelevant messages
+
+### EDGE CASES:
+- Short confirmations ("ok", "haan", "hmm") → use previous context, do NOT blindly classify as cold
+- "What documents are required?" → HOT (strong buying signal)
+- Casual tone but real intent ("loan mil jayega 😂") → ignore tone, focus on intent
+- Mixed signals ("just exploring" + "need urgently") → prioritize stronger signal (urgency → HOT)
+- Earlier weak + latest strong intent → classify based on latest + overall trend
+- Missing data → use null, do NOT hallucinate
+
+### SCORING:
+70–100 → HOT | 40–69 → WARM | 0–39 → COLD
+
+### BUYING SIGNALS (use only these):
+salary_provided | loan_amount_mentioned | urgent_need | asked_application_process | asked_documents | asked_interest_rate | repeated_followups
+
+### OUTPUT — STRICT JSON ONLY, no extra text:
+{
+  "lead_type": "HOT | WARM | COLD",
+  "lead_score": 0-100,
+  "intent": "one_of_defined_intents",
+  "confidence": 0.0-1.0,
+  "signals": {
+    "urgency": "low | medium | high",
+    "seriousness": "low | medium | high",
+    "buying_signals": ["list"]
+  },
+  "entities": {
+    "loan_amount": number_or_null,
+    "salary": number_or_null,
+    "timeline": "immediate | soon | later | unknown"
+  },
+  "reason": "short explanation (1-2 lines)"
+}`;
+
+export async function classifyLead(summary = '', messages = '') {
+  // ── Mock mode ──────────────────────────────────────────────────────────────
+  if (!openai) {
+    await new Promise(r => setTimeout(r, 400));
+    return getMockLeadClassification(summary, messages);
+  }
+
+  const userContent = [
+    summary ? `Conversation Summary:\n${summary}` : '',
+    messages ? `Recent Messages:\n${messages}` : '',
+  ].filter(Boolean).join('\n\n');
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: [
+        { role: 'system', content: LEAD_SYSTEM_PROMPT },
+        { role: 'user',   content: userContent },
+      ],
+      temperature: 0.2,
+      max_tokens: 400,
+    });
+
+    const raw = response.choices[0].message.content.trim();
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('No JSON block found in Groq response');
+
+    const result = JSON.parse(jsonMatch[0]);
+    console.log(`🎯 [Lead] ${result.lead_type} (score: ${result.lead_score}) — ${result.intent}`);
+    return result;
+  } catch (err) {
+    console.error('❌ Groq Lead Classification Error:', err.message);
+    return getMockLeadClassification(summary, messages);
+  }
+}
