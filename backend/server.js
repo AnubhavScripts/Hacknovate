@@ -15,6 +15,7 @@ import logRoutes from './routes/logs.js';
 import webhookRoutes from './routes/webhook.js';
 import escalationRoutes from './routes/escalations.js';
 import rulesRoutes from './routes/rules.js';
+import analyticsRoutes from './routes/analytics.js';
 
 // Middleware imports
 import { verifyApiKey } from './middleware/auth.js';
@@ -60,6 +61,7 @@ app.use('/logs', logRoutes);
 app.use('/webhook', webhookRoutes);
 app.use('/escalations', escalationRoutes);
 app.use('/rules', rulesRoutes);
+app.use('/analytics', analyticsRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

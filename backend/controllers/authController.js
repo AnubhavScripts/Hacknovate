@@ -128,10 +128,21 @@ export const signup = async (req, res) => {
     if (existing) return res.status(409).json({ error: 'Email already registered. Please log in.' });
 
     const user = await User.create({ name, email, googleId: undefined });
-    // Store in session
-    req.session.mockUser = { _id: user._id, name: user.name, email: user.email, isOnboarded: false };
-    return res.json({ success: true, user: req.session.mockUser, redirectTo: '/onboarding' });
+    
+    console.log('🆕 User created:', { _id: user._id, name: user.name, email: user.email });
+    
+    // Store in session with MongoDB _id
+    const sessionUser = { 
+      _id: user._id.toString(), 
+      name: user.name, 
+      email: user.email, 
+      isOnboarded: false 
+    };
+    req.session.mockUser = sessionUser;
+    
+    return res.json({ success: true, user: sessionUser, redirectTo: '/onboarding' });
   } catch (err) {
+    console.error('❌ Signup error:', err.message);
     // DB not available — fall back to mock
     const mockUser = { _id: `user_${Date.now()}`, name, email, isOnboarded: false };
     req.session.mockUser = mockUser;
@@ -148,11 +159,21 @@ export const emailLogin = async (req, res) => {
     const { default: User } = await import('../models/User.js');
     const user = await User.findOne({ email });
     if (!user) return res.status(404).json({ error: 'No account found with this email. Please sign up.' });
+    
+    console.log('✅ User found:', { _id: user._id, name: user.name, email: user.email, isOnboarded: user.isOnboarded });
+    
     // For MVP: no password hashing — just match email (add bcrypt in production)
-    const sessionUser = { _id: user._id, name: user.name, email: user.email, isOnboarded: user.isOnboarded };
+    const sessionUser = { 
+      _id: user._id.toString(), 
+      name: user.name, 
+      email: user.email, 
+      isOnboarded: user.isOnboarded 
+    };
     req.session.mockUser = sessionUser;
+    
     return res.json({ success: true, user: sessionUser, redirectTo: user.isOnboarded ? '/dashboard' : '/onboarding' });
   } catch (err) {
+    console.error('❌ Email login error:', err.message);
     // DB not available — create a demo session
     const mockUser = { _id: 'mock_user_001', name: 'Demo Merchant', email, isOnboarded: false };
     req.session.mockUser = mockUser;
@@ -175,13 +196,21 @@ export const mockLogin = (req, res) => {
 
 // ─── Get current user ────────────────────────────────────────────────────────
 export const getMe = (req, res) => {
-  if (req.user) {
-    return res.json({ user: req.user });
+  try {
+    if (req.user) {
+      console.log('✅ getMe: Found req.user:', req.user._id);
+      return res.json({ user: req.user });
+    }
+    if (req.session.mockUser) {
+      console.log('✅ getMe: Found session user:', req.session.mockUser._id);
+      return res.json({ user: req.session.mockUser });
+    }
+    console.warn('⚠️ getMe: No authenticated user found');
+    return res.status(401).json({ error: 'Not authenticated' });
+  } catch (err) {
+    console.error('❌ getMe error:', err);
+    return res.status(500).json({ error: err.message });
   }
-  if (req.session.mockUser) {
-    return res.json({ user: req.session.mockUser });
-  }
-  return res.status(401).json({ error: 'Not authenticated' });
 };
 
 // ─── Logout ──────────────────────────────────────────────────────────────────
