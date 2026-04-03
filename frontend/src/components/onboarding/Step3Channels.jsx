@@ -52,7 +52,7 @@ const Step3Channels = () => {
 
   const handleConnect = async (channelId) => {
     if (channelId === 'gmail') {
-      window.location.href = 'http://localhost:8000/auth/gmail/connect';
+      window.location.href = 'https://hacknovate-production.up.railway.app/auth/gmail/connect';
       return;
     }
     setConnecting((prev) => ({ ...prev, [channelId]: true }));
