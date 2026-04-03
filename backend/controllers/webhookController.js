@@ -5,33 +5,16 @@ import Log from '../models/Log.js';
 import User from '../models/User.js';
 
 /**
- * Verify Pub/Sub token and extract message
- * @param {string} token - The authorization token from Pub/Sub
- * @returns {boolean} - Whether the token is valid
- */
-function verifyPubSubToken(token) {
-  // In production, validate against Google's public certificates
-  // For now, use a simple shared secret
-  const expectedToken = process.env.PUBSUB_VERIFICATION_TOKEN;
-  if (!expectedToken) {
-    console.warn('⚠️ PUBSUB_VERIFICATION_TOKEN not set - skipping verification');
-    return true;
-  }
-  return token === expectedToken;
-}
-
-/**
  * Webhook endpoint to receive Gmail notifications from Google Cloud Pub/Sub
  * Triggered automatically when a new email arrives (after gmail.users.watch() is called)
+ *
+ * Note: We do NOT validate the Pub/Sub OIDC token here because Google signs
+ * those with its own service-account certificates, not a shared secret.
+ * Security comes from the push URL itself being a secret.
+ * Always respond 2xx so Pub/Sub stops retrying.
  */
 export const handleGmailWebhook = async (req, res) => {
   try {
-    // Verify the request came from Pub/Sub
-    const token = req.get('Authorization')?.replace('Bearer ', '');
-    if (!verifyPubSubToken(token)) {
-      console.warn('⚠️ Invalid Pub/Sub token');
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
 
     // Pub/Sub sends message in a specific format
     const message = req.body.message;
