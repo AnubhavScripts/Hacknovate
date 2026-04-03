@@ -29,7 +29,7 @@ function Login() {
   };
 
   const handleGoogleLogin = () => {
-    window.location.href = "http://localhost:8000/auth/google";
+    window.location.href = "https://hacknovate-production.up.railway.app/auth/google";
   };
 
   return (

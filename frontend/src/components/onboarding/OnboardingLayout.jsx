@@ -1,5 +1,4 @@
 import { useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 import Step1Welcome from './Step1Welcome';
 import Step2Automations from './Step2Automations';
@@ -8,36 +7,42 @@ import Step4Deploy from './Step4Deploy';
 import { useOnboardingStore } from '../../store/onboardingStore';
 
 const OnboardingLayout = () => {
-  const currentStep = useOnboardingStore((state) => state.currentStep);
-  const setCurrentStep = useOnboardingStore((state) => state.setCurrentStep);
-  const connectChannel = useOnboardingStore((state) => state.connectChannel);
-  const location = useLocation();
+  const { currentStep, setCurrentStep, connectChannel } = useOnboardingStore();
 
-  // Handle OAuth callback params (?gmail=connected&step=3)
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const gmailStatus = params.get('gmail');
-
-    if (gmailStatus === 'connected') {
-      // 1. Update state FIRST before clearing URL or changing step
+    // Check for Gmail connection status in URL params
+    const params = new URLSearchParams(window.location.search);
+    
+    if (params.get('gmail') === 'connected') {
+      console.log('✅ Gmail connection detected in URL params, updating store');
       connectChannel('gmail');
-      // 2. Navigate to step 3 so the "Connected" badge is visible
-      setCurrentStep(3);
-      // 3. Clean URL last — after state is committed
-      window.history.replaceState({}, '', '/onboarding');
-    } else if (gmailStatus === 'error') {
-      setCurrentStep(3);
-      window.history.replaceState({}, '', '/onboarding');
     }
-  }, [location.search]);
+    
+    // Set step if provided in URL
+    const step = params.get('step');
+    if (step && parseInt(step) !== currentStep) {
+      console.log('📍 Setting onboarding step to:', step);
+      setCurrentStep(parseInt(step));
+    }
+    
+    // Clean up the URL without reloading
+    if (params.get('gmail') || params.get('step')) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, [connectChannel, setCurrentStep, currentStep]);
 
   const renderStep = () => {
     switch (currentStep) {
-      case 1: return <Step1Welcome />;
-      case 2: return <Step2Automations />;
-      case 3: return <Step3Channels />;
-      case 4: return <Step4Deploy />;
-      default: return <Step1Welcome />;
+      case 1:
+        return <Step1Welcome />;
+      case 2:
+        return <Step2Automations />;
+      case 3:
+        return <Step3Channels />;
+      case 4:
+        return <Step4Deploy />;
+      default:
+        return <Step1Welcome />;
     }
   };
 

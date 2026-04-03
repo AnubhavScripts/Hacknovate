@@ -8,7 +8,7 @@ const hasGoogleCreds =
   process.env.GOOGLE_CLIENT_ID &&
   process.env.GOOGLE_CLIENT_ID !== 'your_google_client_id';
 
-// ─── Google OAuth (Login only — profile + email) ────────────────────────────
+// ─── Google OAuth (Login only — profile + email) ─────────────────────────────
 export const googleAuth = (req, res, next) => {
   if (!hasGoogleCreds) {
     return res.status(501).json({ error: 'Google OAuth not configured.' });
@@ -27,7 +27,7 @@ const makeGmailOAuth2Client = () => new google.auth.OAuth2(
   process.env.GMAIL_CALLBACK_URL || 'http://localhost:8000/auth/gmail/callback'
 );
 
-// ─── Gmail Connector OAuth (Step 3 — gmail.modify scope) ────────────────────
+// ─── Gmail Connector OAuth (Step 3 — gmail.modify scope) ─────────────────────
 // Requests full Gmail access: read, send, and modify emails
 export const gmailConnect = (req, res) => {
   if (!hasGoogleCreds) {
@@ -38,8 +38,8 @@ export const gmailConnect = (req, res) => {
     access_type: 'offline',
     prompt: 'consent',
     scope: [
-      'https://www.googleapis.com/auth/gmail.modify',  // Full Gmail access (read, send, modify)
-      'https://www.googleapis.com/auth/gmail.readonly', // Fallback read-only
+      'https://www.googleapis.com/auth/gmail.modify',   // Full Gmail access (read, send, modify)
+      'https://www.googleapis.com/auth/gmail.readonly',  // Fallback read-only
     ],
   });
   return res.redirect(authUrl);
@@ -81,7 +81,7 @@ export const gmailCallback = async (req, res) => {
       console.warn('[gmailCallback] DB save skipped:', dbErr.message);
     }
 
-    // ── Start Gmail push notifications (fire-and-forget) ──────────────────────
+    // ── Start Gmail push notifications (fire-and-forget) ─────────────────────
     // This calls gmail.users.watch() so Google Pub/Sub pushes new-email events
     // to  POST /webhook/gmail  in real-time.
     const pubSubTopic = process.env.PUBSUB_TOPIC_NAME;
@@ -114,7 +114,7 @@ export const googleCallback = (req, res, next) => {
   })(req, res, next);
 };
 
-// ─── Signup (email + password) ───────────────────────────────────────────────
+// ─── Signup (email + password) ────────────────────────────────────────────────
 export const signup = async (req, res) => {
   const { name, email, password } = req.body;
   if (!name || !email || !password)
@@ -128,18 +128,29 @@ export const signup = async (req, res) => {
     if (existing) return res.status(409).json({ error: 'Email already registered. Please log in.' });
 
     const user = await User.create({ name, email, googleId: undefined });
-    // Store in session
-    req.session.mockUser = { _id: user._id, name: user.name, email: user.email, isOnboarded: false };
-    return res.json({ success: true, user: req.session.mockUser, redirectTo: '/onboarding' });
+
+    console.log('🆕 User created:', { _id: user._id, name: user.name, email: user.email });
+
+    // Store in session with MongoDB _id (toString() ensures it's serialisable)
+    const sessionUser = {
+      _id: user._id.toString(),
+      name: user.name,
+      email: user.email,
+      isOnboarded: false,
+    };
+    req.session.mockUser = sessionUser;
+
+    return res.json({ success: true, user: sessionUser, redirectTo: '/onboarding' });
   } catch (err) {
-    // DB not available — fall back to mock
+    console.error('❌ Signup error:', err.message);
+    // DB not available — fall back to a timestamped mock id
     const mockUser = { _id: `user_${Date.now()}`, name, email, isOnboarded: false };
     req.session.mockUser = mockUser;
     return res.json({ success: true, user: mockUser, redirectTo: '/onboarding' });
   }
 };
 
-// ─── Email + Password Login ────────────────────────────────────────────────────
+// ─── Email + Password Login ───────────────────────────────────────────────────
 export const emailLogin = async (req, res) => {
   const { email, password } = req.body;
   if (!email) return res.status(400).json({ error: 'Email is required' });
@@ -148,11 +159,25 @@ export const emailLogin = async (req, res) => {
     const { default: User } = await import('../models/User.js');
     const user = await User.findOne({ email });
     if (!user) return res.status(404).json({ error: 'No account found with this email. Please sign up.' });
+
+    console.log('✅ User found:', { _id: user._id, name: user.name, email: user.email, isOnboarded: user.isOnboarded });
+
     // For MVP: no password hashing — just match email (add bcrypt in production)
-    const sessionUser = { _id: user._id, name: user.name, email: user.email, isOnboarded: user.isOnboarded };
+    const sessionUser = {
+      _id: user._id.toString(),
+      name: user.name,
+      email: user.email,
+      isOnboarded: user.isOnboarded,
+    };
     req.session.mockUser = sessionUser;
-    return res.json({ success: true, user: sessionUser, redirectTo: user.isOnboarded ? '/dashboard' : '/onboarding' });
+
+    return res.json({
+      success: true,
+      user: sessionUser,
+      redirectTo: user.isOnboarded ? '/dashboard' : '/onboarding',
+    });
   } catch (err) {
+    console.error('❌ Email login error:', err.message);
     // DB not available — create a demo session
     const mockUser = { _id: 'mock_user_001', name: 'Demo Merchant', email, isOnboarded: false };
     req.session.mockUser = mockUser;
@@ -174,11 +199,12 @@ export const mockLogin = (req, res) => {
 };
 
 // ─── Get current user ─────────────────────────────────────────────────────────
-// Always fetches the full DB document so that user.lead (HOT/WARM/COLD) is
-// included in every response — not just the lean session snapshot.
+// Tries DB first (so lead/HOT/WARM/COLD and full profile are included),
+// falls back to session snapshot so the endpoint never 401s due to a DB hiccup.
 export const getMe = async (req, res) => {
-  // Passport Google session
+  // ── Passport Google session ───────────────────────────────────────────────
   if (req.user) {
+    console.log('✅ getMe: Found req.user:', req.user._id);
     try {
       const { default: User } = await import('../models/User.js');
       const fullUser = await User.findById(req.user._id)
@@ -190,13 +216,16 @@ export const getMe = async (req, res) => {
     }
   }
 
-  // Email / mock session
+  // ── Email / mock session ──────────────────────────────────────────────────
   if (req.session?.mockUser) {
     const sessionUser = req.session.mockUser;
-    // Skip DB lookup for pure mock ids (demo mode)
-    if (String(sessionUser._id) === 'mock_user_001') {
+    console.log('✅ getMe: Found session user:', sessionUser._id);
+
+    // Skip DB lookup for pure demo/mock ids — they don't exist in the DB
+    if (String(sessionUser._id) === 'mock_user_001' || String(sessionUser._id).startsWith('user_')) {
       return res.json({ user: sessionUser });
     }
+
     try {
       const { default: User } = await import('../models/User.js');
       const fullUser = await User.findById(sessionUser._id)
@@ -204,10 +233,12 @@ export const getMe = async (req, res) => {
         .lean();
       return res.json({ user: fullUser || sessionUser });
     } catch {
+      // DB unreachable — return session snapshot so UI doesn't break
       return res.json({ user: sessionUser });
     }
   }
 
+  console.warn('⚠️ getMe: No authenticated user found');
   return res.status(401).json({ error: 'Not authenticated' });
 };
 

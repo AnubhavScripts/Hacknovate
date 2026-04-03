@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import Automation from '../models/Automation.js';
 import User from '../models/User.js';
 import { getNewEmails, sendEmail, subscribeToGmailNotifications, unsubscribeFromGmailNotifications, formatEmailAsHtml } from '../services/gmailService.js';
@@ -9,32 +10,62 @@ import { escalateMessage } from '../services/escalationService.js';
 // ─── Save onboarding automation config ───────────────────────────────────────
 export const saveAutomation = async (req, res) => {
   try {
-    const { userId, selectedOptions, connectedChannels, status } = req.body;
+    let { userId, selectedOptions, connectedChannels, status } = req.body;
+
+    console.log('📥 saveAutomation received:', { userId, selectedOptions, connectedChannels, status });
+
+    // Ensure userId is present
+    if (!userId) {
+      return res.status(400).json({ error: 'User ID is required' });
+    }
+
+    // Validate and convert to ObjectId if needed
+    if (typeof userId === 'string' && !mongoose.Types.ObjectId.isValid(userId)) {
+      console.warn('⚠️ Invalid ObjectId format:', userId);
+      return res.status(400).json({ error: 'Invalid user ID format' });
+    }
+
+    if (typeof userId === 'string') {
+      userId = new mongoose.Types.ObjectId(userId);
+    }
+
+    console.log('🔍 Looking for user:', userId);
 
     // Get user data
     const user = await User.findById(userId);
     if (!user) {
+      console.error('❌ User not found:', userId);
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // Check if automation exists
+    console.log('✅ User found:', user._id, user.email);
+
+    // Check if automation already exists
     let automation = await Automation.findOne({ userId });
     const isNewAutomation = !automation;
+
+    console.log(isNewAutomation ? '🆕 Creating new automation' : '📝 Updating existing automation');
 
     // Upsert — one automation per user
     automation = await Automation.findOneAndUpdate(
       { userId },
-      { 
-        selectedOptions, 
-        connectedChannels, 
+      {
+        userId,
+        selectedOptions,
+        connectedChannels,
         status: status || 'active',
-        // ✨ Initialize default rules if new automation
+        // ✨ Initialize default rules only on first creation
         ...(isNewAutomation && { rules: getDefaultRules() }),
       },
       { upsert: true, new: true }
     );
 
-    console.log(`${isNewAutomation ? '🆕' : '📝'} Automation ${isNewAutomation ? 'created' : 'updated'} for user ${userId}`);
+    console.log(`${isNewAutomation ? '🆕' : '📝'} Automation saved:`, {
+      automationId: automation._id,
+      userId: automation.userId,
+      selectedOptions: automation.selectedOptions,
+      status: automation.status,
+    });
 
     // Subscribe to Gmail push notifications if Gmail is connected
     if (connectedChannels?.gmail && user.gmailAccessToken && process.env.GMAIL_WEBHOOK_TOPIC) {
@@ -51,15 +82,16 @@ export const saveAutomation = async (req, res) => {
     // Mark user as onboarded
     if (userId && userId !== 'mock_user_001') {
       await User.findByIdAndUpdate(userId, { isOnboarded: true });
+      console.log('✅ User marked as onboarded');
     }
 
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       automation,
       message: isNewAutomation ? 'Automation created with default rules' : 'Automation updated',
     });
   } catch (err) {
-    console.error(err);
+    console.error('❌ saveAutomation error:', err);
     res.status(500).json({ error: err.message });
   }
 };
@@ -68,10 +100,81 @@ export const saveAutomation = async (req, res) => {
 export const getAutomation = async (req, res) => {
   try {
     const { userId } = req.params;
-    const automation = await Automation.findOne({ userId });
-    if (!automation) return res.status(404).json({ error: 'No automation found' });
+
+    console.log('📥 getAutomation request for userId:', userId);
+
+    let automation = null;
+
+    // Try ObjectId first
+    if (userId && mongoose.Types.ObjectId.isValid(userId)) {
+      const objectId = new mongoose.Types.ObjectId(userId);
+      console.log('🔍 Querying by ObjectId:', objectId);
+      automation = await Automation.findOne({ userId: objectId });
+    }
+
+    // Fallback: try as plain string (handles mock/legacy ids)
+    if (!automation) {
+      console.log('🔍 Querying by string userId:', userId);
+      automation = await Automation.findOne({ userId });
+    }
+
+    if (!automation) {
+      console.warn('⚠️ No automation found for userId:', userId);
+      return res.status(404).json({ error: 'No automation found' });
+    }
+
+    console.log('✅ Automation found:', {
+      automationId: automation._id,
+      userId: automation.userId,
+      selectedOptions: automation.selectedOptions,
+      status: automation.status,
+    });
+
     res.json(automation);
   } catch (err) {
+    console.error('❌ getAutomation error:', err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// ─── Delete automation for a user (Reset) ────────────────────────────────────
+export const deleteAutomation = async (req, res) => {
+  try {
+    let { userId } = req.params;
+
+    console.log('🗑️ deleteAutomation request for userId:', userId);
+
+    // Convert to ObjectId if valid
+    if (typeof userId === 'string' && mongoose.Types.ObjectId.isValid(userId)) {
+      userId = new mongoose.Types.ObjectId(userId);
+    }
+
+    // Verify user exists
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Delete automation
+    const result = await Automation.findOneAndDelete({ userId });
+
+    if (!result) {
+      console.warn('⚠️ No automation found to delete for userId:', userId);
+      return res.status(404).json({ error: 'No automation found to delete' });
+    }
+
+    // Reset user's onboarded status
+    await User.findByIdAndUpdate(userId, { isOnboarded: false });
+
+    console.log('✅ Automation deleted and user marked as not onboarded:', userId);
+
+    res.json({
+      success: true,
+      message: 'Automation deleted successfully',
+      deletedAutomationId: result._id,
+    });
+  } catch (err) {
+    console.error('❌ deleteAutomation error:', err);
     res.status(500).json({ error: err.message });
   }
 };
@@ -98,9 +201,9 @@ export const processEmails = async (req, res) => {
       // Handle insufficient permissions or invalid token
       if (gmailErr.status === 403 || gmailErr.code === 403) {
         console.error('❌ Gmail API Permission Error - Token needs re-authorization');
-        return res.status(403).json({ 
+        return res.status(403).json({
           error: 'Gmail permission expired. Please re-connect your Gmail account in Settings.',
-          details: 'The Gmail token does not have the required scopes. Go to onboarding Step 3 and click "Connect Gmail" again.'
+          details: 'The Gmail token does not have the required scopes. Go to onboarding Step 3 and click "Connect Gmail" again.',
         });
       }
       throw gmailErr;
@@ -146,7 +249,7 @@ export const processEmails = async (req, res) => {
 
         // ✨ Otherwise: auto-reply
         console.log(`💬 Auto-replying to ${email.from}`);
-        
+
         // Generate reply
         const reply = await generateReply(email.body, classification.type, flowType);
 
@@ -171,7 +274,7 @@ export const processEmails = async (req, res) => {
       }
     }
 
-    // Update last checked
+    // Update last checked timestamp
     automation.lastEmailCheck = new Date();
     await automation.save();
 
