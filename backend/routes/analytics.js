@@ -4,11 +4,17 @@ import Conversation from '../models/Conversation.js';
 
 const router = express.Router();
 
-// ─── Helper: build lead match query ───────────────────────────────────────────
+// ─── Helper: build lead match query ───────────────────────────────────────────────
 function buildLeadQuery(userId) {
   const base = { 'lead.type': { $in: ['HOT', 'WARM', 'COLD'] } };
   if (userId && userId !== 'mock_user_001') {
-    base.userId = userId;
+    // Use $or so we catch conversations saved WITH this userId AND any that
+    // were saved without a userId (e.g. when the automation lookup failed)
+    base.$or = [
+      { userId: userId },
+      { userId: { $exists: false } },
+      { userId: null },
+    ];
   }
   return base;
 }
@@ -105,7 +111,7 @@ router.get('/:userId/leads', async (req, res) => {
     const { userId } = req.params;
     const leadQuery = buildLeadQuery(userId);
 
-    const [leadCounts, topLeadDocs] = await Promise.all([
+    let [leadCounts, topLeadDocs] = await Promise.all([
       Conversation.aggregate([
         { $match: leadQuery },
         { $group: { _id: '$lead.type', count: { $sum: 1 } } },
@@ -115,6 +121,24 @@ router.get('/:userId/leads', async (req, res) => {
         .limit(20)
         .lean(),
     ]);
+
+    // ── Fallback: if no leads found with userId filter, return ALL leads ──
+    // This handles the case where conversations were stored without a userId
+    // (e.g. incoming WhatsApp before automation was fully set up)
+    if (leadCounts.length === 0 && userId && userId !== 'mock_user_001') {
+      console.log(`⚠️  No leads found for userId ${userId} — falling back to all conversations`);
+      const allLeadsQuery = { 'lead.type': { $in: ['HOT', 'WARM', 'COLD'] } };
+      [leadCounts, topLeadDocs] = await Promise.all([
+        Conversation.aggregate([
+          { $match: allLeadsQuery },
+          { $group: { _id: '$lead.type', count: { $sum: 1 } } },
+        ]),
+        Conversation.find(allLeadsQuery)
+          .sort({ 'lead.score': -1, lastMessageAt: -1 })
+          .limit(20)
+          .lean(),
+      ]);
+    }
 
     const distribution = { HOT: 0, WARM: 0, COLD: 0 };
     leadCounts.forEach(({ _id, count }) => { if (_id) distribution[_id] = count; });
@@ -126,6 +150,7 @@ router.get('/:userId/leads', async (req, res) => {
       fetchedAt: new Date().toISOString(),
     });
   } catch (err) {
+    console.error('❌ Leads fetch error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

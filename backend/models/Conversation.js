@@ -30,7 +30,7 @@ const conversationSchema = new mongoose.Schema({
   // Conversation stats
   totalMessages: { type: Number, default: 0 },
   lastMessage:   { type: String, default: '' },
-  flowType:      { type: String, enum: ['sales', 'support', 'general'], default: 'general' },
+  flowType:      { type: String, enum: ['sales', 'support', 'education', 'general'], default: 'general' },
 
   firstMessageAt: { type: Date, default: Date.now },
   lastMessageAt:  { type: Date, default: Date.now },
