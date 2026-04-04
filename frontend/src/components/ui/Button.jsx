@@ -6,13 +6,13 @@ const buttonVariants = {
   primary: "relative bg-gradient-to-r from-blue-600 via-blue-500 to-blue-600 text-white font-semibold shadow-lg shadow-blue-500/30 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-500/40 active:translate-y-0 active:shadow-md after:absolute after:inset-0 after:rounded-lg after:bg-gradient-to-r after:from-blue-400 after:to-blue-300 after:opacity-0 hover:after:opacity-20 after:transition-opacity",
   
   // Secondary button
-  secondary: "bg-slate-100 text-slate-900 font-semibold hover:bg-slate-200 border border-slate-200 hover:border-slate-300 shadow-sm hover:shadow-md active:bg-slate-150",
+  secondary: "bg-slate-700 text-slate-100 font-semibold hover:bg-slate-600 border border-slate-600 hover:border-slate-500 shadow-sm hover:shadow-md",
   
   // Outline button
-  outline: "border-2 border-slate-300 text-slate-700 font-semibold hover:bg-slate-50 hover:border-blue-400 hover:text-blue-600 transition-all",
+  outline: "border-2 border-slate-600 text-slate-300 font-semibold hover:bg-slate-700/50 hover:border-blue-500 hover:text-blue-300 transition-all",
   
   // Ghost button
-  ghost: "text-slate-600 hover:text-slate-900 hover:bg-slate-100/50 font-medium transition-colors",
+  ghost: "text-slate-400 hover:text-white hover:bg-slate-700/40 font-medium transition-colors",
   
   // Destructive/Delete button
   destructive: "bg-gradient-to-r from-red-600 to-red-500 text-white font-semibold shadow-lg shadow-red-500/30 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-red-500/40 active:translate-y-0",
