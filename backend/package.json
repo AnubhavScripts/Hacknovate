@@ -1,7 +1,7 @@
 {
-  "name": "merchantai-backend",
+  "name": "assistly-backend",
   "version": "1.0.0",
-  "description": "AI-powered merchant automation platform backend",
+  "description": "Assistly — AI-powered customer support automation backend",
   "main": "server.js",
   "type": "module",
   "scripts": {

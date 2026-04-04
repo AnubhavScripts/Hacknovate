@@ -144,7 +144,7 @@ export const deployOnboarding = async (req, res) => {
     const automation = await Automation.findOneAndUpdate(
       { userId },
       {
-        name: user ? `${user.email} - AI Assistant` : 'AI Assistant',
+        name: user ? `${user.email} - Assistly` : 'Assistly',
         selectedOptions:      finalAutomations,
         selectedSubcategories: finalSubcategories,
         connectedChannels:    finalChannels,
