@@ -53,6 +53,7 @@ export const toggleRuleApi = (userId, ruleId) => api.patch(`/rules/${userId}/rul
 // Analytics
 export const getAnalyticsApi = (userId) => api.get(`/analytics/${userId}`);
 export const getChannelDataApi = (userId, channel) => api.get(`/analytics/${userId}/channels`, { params: { channel } });
+export const getLeadsApi = (userId) => api.get(`/analytics/${userId}/leads`);
 
 // Onboarding
 export const saveAutomationsApi = (data) => api.post('/onboarding/automations', data);

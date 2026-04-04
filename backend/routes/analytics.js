@@ -1,10 +1,37 @@
 import express from 'express';
 import Log from '../models/Log.js';
-import User from '../models/User.js';
+import Conversation from '../models/Conversation.js';
 
 const router = express.Router();
 
-// GET /analytics/:userId — summary stats for the dashboard
+// ─── Helper: build lead match query ───────────────────────────────────────────
+function buildLeadQuery(userId) {
+  const base = { 'lead.type': { $in: ['HOT', 'WARM', 'COLD'] } };
+  if (userId && userId !== 'mock_user_001') {
+    base.userId = userId;
+  }
+  return base;
+}
+
+// ─── Format a Conversation doc into a frontend-ready lead object ───────────────
+function formatConv(c) {
+  return {
+    name: c.conversationId?.replace('whatsapp:', '') || 'Unknown',
+    phone: c.conversationId?.replace('whatsapp:', '') || '',
+    leadType: c.lead?.type || 'COLD',
+    score: c.lead?.score || 0,
+    trend: c.lead?.trend || 'stable',
+    intent: c.lead?.intent || 'unknown',
+    summary: c.summary || c.lead?.reason || '',
+    signals: c.lead?.signals || [],
+    reason: c.lead?.reason || '',
+    lastInteraction: c.lastMessageAt || c.updatedAt || null,
+    totalMessages: c.totalMessages || 0,
+    lastMessage: c.lastMessage || '',
+  };
+}
+
+// GET /analytics/:userId — full dashboard stats
 router.get('/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
@@ -34,34 +61,22 @@ router.get('/:userId', async (req, res) => {
       ? Math.round((autoResolved / totalMessages) * 100)
       : 0;
 
-    // ── Lead Intelligence from User profiles ──────────────────────────────────
-    // Aggregate lead counts from WhatsApp users stored in User model
-    const [leadCounts, topLeads] = await Promise.all([
-      User.aggregate([
-        { $match: { 'lead.type': { $in: ['HOT', 'WARM', 'COLD'] } } },
+    // ── Lead Intelligence — sourced from Conversation model ────────────────────
+    const leadQuery = buildLeadQuery(userId);
+
+    const [leadCounts, topLeadDocs] = await Promise.all([
+      Conversation.aggregate([
+        { $match: leadQuery },
         { $group: { _id: '$lead.type', count: { $sum: 1 } } },
       ]),
-      User.find({ 'lead.type': { $in: ['HOT', 'WARM', 'COLD'] } })
+      Conversation.find(leadQuery)
         .sort({ 'lead.score': -1 })
         .limit(10)
-        .select('name email lead')
         .lean(),
     ]);
 
     const leadDistribution = { HOT: 0, WARM: 0, COLD: 0 };
     leadCounts.forEach(({ _id, count }) => { if (_id) leadDistribution[_id] = count; });
-
-    const leadsFormatted = topLeads.map(u => ({
-      name: u.name || u.email || 'Unknown',
-      phone: u.email || '',
-      leadType: u.lead?.type || 'COLD',
-      score: u.lead?.score || 0,
-      trend: u.lead?.trend || 'stable',
-      intent: u.lead?.intent || 'unknown',
-      summary: u.lead?.summary || '',
-      reason: u.lead?.reason || '',
-      lastInteraction: u.lead?.lastInteraction || null,
-    }));
 
     res.json({
       summary: {
@@ -75,9 +90,40 @@ router.get('/:userId', async (req, res) => {
       sentiment,
       leads: {
         distribution: leadDistribution,
-        topLeads: leadsFormatted,
+        topLeads: topLeadDocs.map(formatConv),
         total: leadDistribution.HOT + leadDistribution.WARM + leadDistribution.COLD,
       },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /analytics/:userId/leads — real-time lead polling (called every 30s from frontend)
+router.get('/:userId/leads', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const leadQuery = buildLeadQuery(userId);
+
+    const [leadCounts, topLeadDocs] = await Promise.all([
+      Conversation.aggregate([
+        { $match: leadQuery },
+        { $group: { _id: '$lead.type', count: { $sum: 1 } } },
+      ]),
+      Conversation.find(leadQuery)
+        .sort({ 'lead.score': -1, lastMessageAt: -1 })
+        .limit(20)
+        .lean(),
+    ]);
+
+    const distribution = { HOT: 0, WARM: 0, COLD: 0 };
+    leadCounts.forEach(({ _id, count }) => { if (_id) distribution[_id] = count; });
+
+    res.json({
+      distribution,
+      topLeads: topLeadDocs.map(formatConv),
+      total: distribution.HOT + distribution.WARM + distribution.COLD,
+      fetchedAt: new Date().toISOString(),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -97,12 +143,7 @@ router.get('/:userId/channels', async (req, res) => {
       Log.countDocuments({ ...matchQuery, hasReplied: true }),
     ]);
 
-    res.json({
-      metrics: {
-        totalMessages,
-        autoResolved,
-      },
-    });
+    res.json({ metrics: { totalMessages, autoResolved } });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

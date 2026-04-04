@@ -107,7 +107,7 @@ Context: This is a ${flowType} business.`;
 }
 
 // ─── generateReply ────────────────────────────────────────────────────────────
-const LOAN_APPLICATION_URL = 'https://assistly-iota.vercel.app/loan-apply.html';
+const LOAN_APPLICATION_URL = 'https://hacknovate-five.vercel.app/dashboard';
 
 const MOCK_REPLIES = {
   cancellation: "We've received your cancellation request and are processing it immediately. You'll get a confirmation within 15 minutes.",
