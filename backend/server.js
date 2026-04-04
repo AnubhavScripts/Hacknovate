@@ -36,6 +36,12 @@ const __dirname = dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// ─── Trust Railway's reverse proxy ────────────────────────────────────────────
+// Railway terminates HTTPS at the load balancer, then forwards requests to the
+// app over HTTP. Without this, Express thinks the connection is insecure and
+// refuses to set Secure cookies → session cookie is never sent → 401 on /auth/me
+app.set('trust proxy', 1);
+
 // ─── Middleware ────────────────────────────────────────────────────────────────
 app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:5173',
