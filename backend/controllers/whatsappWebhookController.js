@@ -18,13 +18,34 @@ function isTwilioRequestValid(req) {
     return true;
   }
 
+  // Allow bypassing validation via env var (useful when Railway proxy headers are unreliable)
+  if (process.env.SKIP_TWILIO_VALIDATION === 'true') {
+    console.warn('⚠️  SKIP_TWILIO_VALIDATION=true — skipping Twilio signature check');
+    return true;
+  }
+
   const signature = req.headers['x-twilio-signature'] || '';
+
+  // Railway terminates HTTPS at the load balancer. The most reliable way to
+  // reconstruct the URL is: x-forwarded-proto + the Host header (not x-forwarded-host
+  // which may be absent or wrong). This must exactly match what Twilio signed.
   const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-  const host = req.headers['x-forwarded-host'] || req.headers.host;
+  const host = req.headers['host'];  // Use 'host' directly — most stable behind Railway
   const url = `${protocol}://${host}${req.originalUrl}`;
 
+  console.log(`🔐 [Twilio] Validating request | url=${url} | sig=${signature.slice(0, 20)}...`);
+
+  if (!signature) {
+    console.warn('⚠️  [Twilio] No X-Twilio-Signature header found — rejecting');
+    return false;
+  }
+
   try {
-    return twilio.validateRequest(authToken, signature, url, req.body);
+    const isValid = twilio.validateRequest(authToken, signature, url, req.body);
+    if (!isValid) {
+      console.warn(`❌ [Twilio] Signature mismatch for URL: ${url}`);
+    }
+    return isValid;
   } catch (err) {
     console.error('❌ Twilio signature validation error:', err.message);
     return false;
