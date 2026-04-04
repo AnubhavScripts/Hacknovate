@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useUser } from '../context/UserContext';
-import { MessageSquare, Mail, Settings, BarChart3, ChevronLeft, ChevronRight, Zap, Bell } from 'lucide-react';
+import { MessageSquare, Mail, Settings, BarChart3, ChevronLeft, ChevronRight, Zap, Activity } from 'lucide-react';
 
 const Sidebar = ({ activeSection, setActiveSection }) => {
   const { user } = useUser();
@@ -26,10 +26,10 @@ const Sidebar = ({ activeSection, setActiveSection }) => {
       description: 'Insights & metrics',
     },
     {
-      id: 'reminders',
-      label: 'Reminders',
-      icon: Bell,
-      description: 'Assignment alerts',
+      id: 'logs',
+      label: 'Activity',
+      icon: Activity,
+      description: 'Message logs',
     },
     {
       id: 'settings',
@@ -52,7 +52,7 @@ const Sidebar = ({ activeSection, setActiveSection }) => {
                 <Zap size={20} className="text-white" />
               </div>
               <div className="min-w-0">
-                <h1 className="text-lg fontblue-200 font-semiboldt-white tracking-tight truncate">Assistly</h1>
+                <h1 className="text-lg text-blue-200 font-semibold text-white tracking-tight truncate">Assistly</h1>
                 <p className="text-xs text-slate-400">AI Assistant</p>
               </div>
             </div>
