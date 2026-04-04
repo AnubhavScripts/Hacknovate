@@ -72,8 +72,7 @@ export const handleWhatsAppWebhook = async (req, res) => {
     if (/remind\s*me|set\s*(a\s*)?reminder|याद\s*दिला/i.test(incomingBody)) {
       const parsed = parseReminderFromMessage(incomingBody);
       if (parsed) {
-        const userId = user?._id || null;
-        await scheduleReminder(fromNumber, parsed.subject, parsed.remindAtUTC, userId);
+        await scheduleReminder(fromNumber, parsed.subject, parsed.remindAtUTC, null);
         const localTime = new Date(parsed.remindAtUTC.getTime() + 5.5 * 60 * 60 * 1000);
         const timeStr = localTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
         const reply = `✅ Got it! I'll remind you to *${parsed.subject}* at *${timeStr} IST* today.\n\nI'll send you a WhatsApp message when it's time! ⏰`;
@@ -143,11 +142,19 @@ export const handleWhatsAppWebhook = async (req, res) => {
       // ── 9. Decide flow dynamically based on message content + conversation history ─────
       // Use the smart detector: checks both current message AND conversation context
       flowType = detectFlowType(incomingBody, transcript);
-      // Cross-check with lead intent: if intent is clearly loan-related, prefer sales
-      if (flowType !== 'education' && leadData && leadData.intent !== 'irrelevant' && leadData.intent !== 'just_exploring') {
+      // Only override to 'sales' if the CURRENT message also has a loan keyword.
+      // This prevents short replies like "ok", "yes", "haan" from hijacking
+      // a non-loan conversation into the sales flow and cutting it off.
+      const currentMsgHasLoanKeyword = /\b(loan|borrow|credit|emi|interest rate|salary|apply|application|kyc|aadhaar|pan|lakh|repay|finance|fintech|bank|nbfc|eligible|eligibility|home loan|personal loan|business loan)\b/i.test(incomingBody);
+      if (
+        flowType !== 'education' &&
+        currentMsgHasLoanKeyword &&
+        leadData &&
+        ['loan_application','eligibility_check','interest_rate_query','document_requirement','repayment_query','loan_inquiry'].includes(leadData.intent)
+      ) {
         flowType = 'sales';
       }
-      console.log(`🧠 Flow selected: ${flowType}`);
+      console.log(`🧠 Flow selected: ${flowType} | lead intent: ${leadData?.intent}`);
 
       // ── 10. Basic message classification (type, sentiment, priority) ──────────
       classification = await classifyMessage(incomingBody, 'general');
@@ -174,10 +181,12 @@ export const handleWhatsAppWebhook = async (req, res) => {
       const convoText       = fullConversation.toLowerCase();
 
       // ── 12. Follow-up engine — guarantee key questions are always asked ──────
-      // Only fires in sales mode when AI reply might be too generic
+      // Only fires in sales mode when AI reply might be too generic.
+      // Guard: only engage after at least 1 prior conversation turn so we don't
+      // interrupt a fresh greeting with a double-barrelled question.
       let followUpOverride = null;
 
-      if (flowType === 'sales') {
+      if (flowType === 'sales' && conversationHistory.length >= 1) {
         const missing = [];
 
         // Only flag as missing if NOT already present in conversation text
@@ -187,21 +196,20 @@ export const handleWhatsAppWebhook = async (req, res) => {
         if (!knownSalary && !salaryMentioned)         missing.push('salary');
         if (!knownLoanAmount && !loanAmountMentioned) missing.push('loan_amount');
 
-        if (missing.length === 2) {
-          // Neither known — ask both together (first message scenario)
-          followUpOverride = "To help you better, what's your monthly salary and how much loan do you need?";
-        } else if (missing.includes('salary')) {
-          // Loan amount known but salary missing — personalize
-          const lakhStr = knownLoanAmount
-            ? `₹${(knownLoanAmount / 100000).toFixed(1)} lakh — ` : '';
-          followUpOverride = `Got it${lakhStr ? ` — ${lakhStr}` : '!'}Could you share your monthly salary?`;
-        } else if (missing.includes('loan_amount')) {
+        // Ask ONE thing at a time — never a double question
+        if (missing.includes('loan_amount') && !missing.includes('salary')) {
           // Salary known but loan amount missing — personalize
           const salaryStr = knownSalary
             ? `₹${knownSalary.toLocaleString('en-IN')} salary — ` : '';
           followUpOverride = `${salaryStr ? `Got it — ${salaryStr}h` : 'H'}ow much loan are you looking for?`;
+        } else if (missing.includes('salary') && !missing.includes('loan_amount')) {
+          // Loan amount known but salary missing — personalize
+          const lakhStr = knownLoanAmount
+            ? `₹${(knownLoanAmount / 100000).toFixed(1)} lakh — ` : '';
+          followUpOverride = `Got it${lakhStr ? ` — ${lakhStr}` : '!'}Could you share your monthly salary?`;
         }
-        // If both are known → no override, let AI craft the eligibility/CTA reply
+        // If both missing → let AI ask naturally (avoid overwhelming first-time users)
+        // If both known   → no override, let AI craft the eligibility/CTA reply
       }
 
       // ── 13. Generate reply using the correct flow + context ─────────────────
