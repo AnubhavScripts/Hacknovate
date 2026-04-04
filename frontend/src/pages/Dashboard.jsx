@@ -543,6 +543,89 @@ const Dashboard = () => {
                 </Card>
               </div>
 
+              {/* ── Lead Intelligence Section ── */}
+              <Card className="bg-slate-900/70 border-slate-700/50 backdrop-blur-sm">
+                <CardHeader>
+                  <CardTitle className="text-white flex items-center gap-2">
+                    <Activity size={18} className="text-blue-400" />
+                    Lead Intelligence
+                  </CardTitle>
+                  <CardDescription className="text-slate-400">AI-scored lead distribution from WhatsApp conversations</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {/* Lead Distribution Cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    {/* HOT */}
+                    <div className="rounded-xl border-2 border-red-500/30 bg-red-500/5 p-5">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-2xl">🔥</span>
+                        <span className="text-3xl font-bold text-red-400">{analytics?.leads?.distribution?.HOT || 0}</span>
+                      </div>
+                      <p className="text-red-300 font-bold text-sm mb-1">HOT Leads</p>
+                      <p className="text-xs text-slate-400 leading-relaxed">High intent, ready to apply. Use <span className="text-red-300 font-semibold">premium marketing</span>: personalized calls, priority onboarding, exclusive offers, and dedicated sales rep follow-ups.</p>
+                    </div>
+
+                    {/* WARM */}
+                    <div className="rounded-xl border-2 border-amber-500/30 bg-amber-500/5 p-5">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-2xl">🌤️</span>
+                        <span className="text-3xl font-bold text-amber-400">{analytics?.leads?.distribution?.WARM || 0}</span>
+                      </div>
+                      <p className="text-amber-300 font-bold text-sm mb-1">WARM Leads</p>
+                      <p className="text-xs text-slate-400 leading-relaxed">Interested but not committed. Use <span className="text-amber-300 font-semibold">nurturing campaigns</span>: targeted WhatsApp follow-ups, educational content about loan benefits, eligibility calculators, and retargeting ads.</p>
+                    </div>
+
+                    {/* COLD */}
+                    <div className="rounded-xl border-2 border-blue-500/30 bg-blue-500/5 p-5">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-2xl">❄️</span>
+                        <span className="text-3xl font-bold text-blue-400">{analytics?.leads?.distribution?.COLD || 0}</span>
+                      </div>
+                      <p className="text-blue-300 font-bold text-sm mb-1">COLD Leads</p>
+                      <p className="text-xs text-slate-400 leading-relaxed">Low intent, exploring only. Use <span className="text-blue-300 font-semibold">low-cost outreach</span>: bulk SMS campaigns, automated awareness messages, and periodic check-ins. Keep budget minimal.</p>
+                    </div>
+                  </div>
+
+                  {/* Top Leads Table */}
+                  {analytics?.leads?.topLeads?.length > 0 ? (
+                    <div>
+                      <p className="text-sm font-semibold text-slate-300 mb-3 uppercase tracking-wider">Top Leads by Score</p>
+                      <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
+                        {analytics.leads.topLeads.map((lead, idx) => (
+                          <div key={idx} className="rounded-xl bg-slate-800/60 border border-slate-700/50 p-4 hover:border-slate-600 transition-colors">
+                            <div className="flex items-start justify-between gap-3 mb-2">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold flex items-center gap-1 ${leadBadgeColor(lead.leadType)}`}>
+                                  {leadTrendIcon(lead.trend === 'increasing' ? 'RISING' : lead.trend === 'decreasing' ? 'FALLING' : 'STABLE')} {lead.leadType}
+                                </span>
+                                <span className="text-sm font-semibold text-white">{lead.name}</span>
+                                <span className="text-xs text-slate-500">{lead.intent?.replace(/_/g, ' ')}</span>
+                              </div>
+                              <div className="flex items-center gap-2 flex-shrink-0">
+                                <span className="text-xs text-slate-400">Score</span>
+                                <span className={`text-sm font-bold ${lead.score >= 70 ? 'text-red-400' : lead.score >= 40 ? 'text-amber-400' : 'text-blue-400'}`}>{lead.score}</span>
+                              </div>
+                            </div>
+                            {lead.summary && (
+                              <p className="text-xs text-slate-400 leading-relaxed border-l-2 border-slate-600 pl-3">{lead.summary}</p>
+                            )}
+                            {lead.lastInteraction && (
+                              <p className="text-xs text-slate-600 mt-1">{new Date(lead.lastInteraction).toLocaleString()}</p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 border border-dashed border-slate-700/50 rounded-xl">
+                      <TrendingUp size={32} className="text-slate-600 mx-auto mb-2" />
+                      <p className="text-slate-400 text-sm font-medium">No lead data yet</p>
+                      <p className="text-slate-600 text-xs mt-1">Lead scores will appear once WhatsApp conversations are processed</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
               {/* Channel + Sentiment */}
               <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                 <Card className="bg-slate-900/70 border-slate-700/50 backdrop-blur-sm">

@@ -87,7 +87,7 @@ const Step3Channels = () => {
             <Progress value={75} />
           </div>
           <CardTitle className="text-3xl bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">Connect Your Channels</CardTitle>
-          <CardDescription className="text-gray-100 mt-2">
+          <CardDescription className="text-slate-300 mt-2">
             Choose which channels to connect for automations
           </CardDescription>
         </CardHeader>
@@ -167,14 +167,14 @@ const Step3Channels = () => {
 
           {/* Info Box */}
           <div className="mt-6 rounded-lg bg-gradient-to-br from-blue-600/20 to-indigo-600/20 border border-blue-500/30 p-4 backdrop-blur-sm">
-            <p className="text-sm text-gray-100">
+            <p className="text-sm text-slate-300">
               <span className="text-blue-300 font-bold">ℹ️ Note:</span> You need at least one channel connected to proceed. You can add more channels later from settings.
             </p>
           </div>
 
           {/* Connected Summary */}
           <div className="mt-6 p-4 bg-slate-800/50 rounded-lg border border-slate-700/50">
-            <p className="text-sm font-semibold text-white mb-3">Connected Channels</p>
+            <p className="text-sm font-semibold text-slate-200 mb-3">Connected Channels</p>
             <div className="flex flex-wrap gap-2">
               {channels.length > 0 ? (
                 channels.map((ch) => (

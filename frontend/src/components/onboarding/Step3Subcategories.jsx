@@ -73,7 +73,7 @@ const Step3Subcategories = () => {
                 <Progress value={60} />
               </div>
               <CardTitle className="text-3xl bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">Select Subcategories</CardTitle>
-              <CardDescription className="text-gray-100 mt-2">
+              <CardDescription className="text-slate-300 mt-2">
                 Choose specific automations for your selected categories
               </CardDescription>
             </CardHeader>
@@ -146,7 +146,7 @@ const Step3Subcategories = () => {
                 {selectedSubcategories.length > 0 ? (
                   <div className="space-y-2">
                     {selectedSubcategories.map((subcat) => (
-                      <div key={subcat} className="flex items-center gap-2 text-sm text-gray-100">
+                      <div key={subcat} className="flex items-center gap-2 text-sm text-slate-300">
                         <Check size={16} className="text-green-400" />
                         <span>{subcategoryMapping[selectedAutomations[0]]?.find(s => s.id === subcat)?.label || subcat}</span>
                       </div>

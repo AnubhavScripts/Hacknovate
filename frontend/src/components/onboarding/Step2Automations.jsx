@@ -66,7 +66,7 @@ const Step2Automations = () => {
                 <Progress value={50} />
               </div>
               <CardTitle className="text-3xl bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">Select Automations</CardTitle>
-              <CardDescription className="text-gray-100 mt-2">
+              <CardDescription className="text-slate-300 mt-2">
                 Choose which automation workflows to enable
               </CardDescription>
             </CardHeader>
@@ -132,7 +132,7 @@ const Step2Automations = () => {
 
                 {/* Selected Badges */}
                 <div>
-                  <p className="mb-3 text-xs font-bold text-gray-300 uppercase tracking-wider">Selected</p>
+                  <p className="mb-3 text-xs font-bold text-slate-300 uppercase tracking-wider">Selected</p>
                   <div className="flex flex-wrap gap-2">
                     {selectedAutomations.length > 0 ? (
                       selectedAutomations.map((automation) => (

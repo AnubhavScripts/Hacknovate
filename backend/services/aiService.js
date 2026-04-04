@@ -20,7 +20,6 @@ const MOCK_CLASSIFICATIONS = {
   broken: { type: 'complaint', sentiment: 'negative', priority: 'urgent', action: 'Escalate to quality team and arrange replacement or refund' },
   how: { type: 'query', sentiment: 'neutral', priority: 'low', action: 'Send relevant product documentation and FAQ link' },
   help: { type: 'query', sentiment: 'neutral', priority: 'medium', action: 'Route to customer support team for personalised assistance' },
-  course: { type: 'query', sentiment: 'neutral', priority: 'medium', action: 'Answer education course query' },
   default: { type: 'invalid', sentiment: 'neutral', priority: 'low', action: 'Message is not a valid customer support query' },
 };
 
@@ -37,13 +36,14 @@ function getMockClassification(message) {
 export function detectFlowType(message, conversationText = '') {
   const text = `${conversationText} ${message}`.toLowerCase();
 
-  // Education keywords
-  const eduKeywords = /\b(course|courses|syllabus|curriculum|fee|fees|tuition|admission|enroll|enrollment|certificate|degree|diploma|batch|class|classes|lecture|assignment|homework|quiz|exam|study|learn|learning|duration|module|subject|eligibility|scholarship|institute|college|university|program|programme)\b/i;
-  if (eduKeywords.test(text)) return 'education';
-
-  // Loan / fintech keywords
-  const loanKeywords = /\b(loan|borrow|credit|emi|interest rate|salary|eligib|apply|application|kyc|aadhaar|pan|lakh|repay|finance|fintech|bank|nbfc)\b/i;
+  // Loan / fintech keywords — checked FIRST so they always win
+  const loanKeywords = /\b(loan|borrow|credit|emi|interest rate|salary|apply|application|kyc|aadhaar|pan|lakh|repay|finance|fintech|bank|nbfc|eligible|eligibility|home loan|personal loan|business loan)\b/i;
   if (loanKeywords.test(text)) return 'sales';
+
+  // Education-ONLY keywords — only triggered when there is zero fintech context
+  // Removed generic words like "fee/fees" that overlap with fintech (processing fee, late fee etc.)
+  const eduKeywords = /\b(syllabus|curriculum|tuition|enroll|enrollment|certificate|degree|diploma|batch|lecture|assignment|homework|quiz|exam|module|scholarship|college|university|programme|program|course\s+fee|online\s+course|e-?learning)\b/i;
+  if (eduKeywords.test(text)) return 'education';
 
   return 'support'; // fallback — general customer support
 }
@@ -180,19 +180,15 @@ export async function generateReply(message, type = 'query', flowType = 'general
 
   // 🎓 EDUCATION MODE (Generic course queries)
   if (flowType === 'education') {
-    if (!openai) {
-      await new Promise(r => setTimeout(r, 300));
-      return getMockEducationReply(message);
-    }
-    systemPrompt = `You are a friendly and knowledgeable education assistant for an online learning platform.
+    systemPrompt = `You are a warm and knowledgeable academic counselor for an online learning platform.
 
 Your job:
 - Answer questions about courses, fees, syllabus, duration, eligibility, enrollment, certificates, and placement
-- Be encouraging and helpful
+- Be warm, encouraging, and personal — like talking to a friendly advisor
 - Keep answers concise (2-3 sentences max)
 - If you don't know a specific detail, give a sensible generic range and ask a clarifying question
-- Do NOT mention specific institutes, universities, or prices unless asked
-- Speak naturally, like a helpful academic counselor
+- Do NOT talk about loans, banks, or any financial products
+- Speak naturally — avoid corporate jargon
 
 Do NOT reject education questions. Always engage warmly.`;
   }
@@ -204,15 +200,15 @@ Do NOT reject education questions. Always engage warmly.`;
     if (knownLoanAmount) knownFacts.push(`loan amount: ₹${(knownLoanAmount / 100000).toFixed(1)} lakh`);
     if (knownSalary)     knownFacts.push(`monthly salary: ₹${knownSalary.toLocaleString('en-IN')}`);
     const knownContext = knownFacts.length > 0
-      ? `\nKnown user info: ${knownFacts.join(', ')}. Use this — DO NOT ask for info already provided.`
+      ? `\nAlready known: ${knownFacts.join(', ')}. Reference naturally — DO NOT ask again.`
       : '';
 
     // Track what has already been asked in this conversation
     const alreadyAskedSalary     = /salary|income|earn/i.test(convoText);
     const alreadyAskedLoanAmount = /how much|loan amount|kितना/i.test(convoText);
     const avoidAsking = [];
-    if (alreadyAskedSalary || knownSalary)         avoidAsking.push('salary (already asked or known)');
-    if (alreadyAskedLoanAmount || knownLoanAmount)  avoidAsking.push('loan amount (already asked or known)');
+    if (alreadyAskedSalary || knownSalary)         avoidAsking.push('salary');
+    if (alreadyAskedLoanAmount || knownLoanAmount)  avoidAsking.push('loan amount');
     const avoidContext = avoidAsking.length > 0
       ? `\nDO NOT ask again about: ${avoidAsking.join(', ')}.`
       : '';
@@ -222,64 +218,73 @@ Do NOT reject education questions. Always engage warmly.`;
       return `Great news! Based on your salary of ₹${knownSalary.toLocaleString('en-IN')} and loan requirement of ₹${(knownLoanAmount / 100000).toFixed(1)} lakh, you're likely eligible! 🎉\n\nPlease fill out your application here:\n👉 ${LOAN_APPLICATION_URL}\n\nOur team will review it within 24 hours.`;
     }
 
-    systemPrompt = `You are a friendly fintech assistant helping users get loans.
-
-Your goal:
-- Understand the user's loan needs
-- Ask smart ONE follow-up question at a time
-- Guide them toward applying
+    systemPrompt = `You are a friendly fintech advisor helping people get personal loans. Sound like a real helpful human, not a bot.
 ${knownContext}${avoidContext}
 
-Rules:
-- Be conversational and human-like
-- Keep replies to 1–2 lines max
-- Reference known info naturally (e.g. "Got it — ₹5 lakh...")
-- Ask only ONE question per reply, not multiple
-- If both salary and loan amount are known → tell them they're likely eligible, give them the application link: ${LOAN_APPLICATION_URL}
+Your approach:
+- Be conversational and warm — like texting a knowledgeable friend
+- Ask ONE smart follow-up question at a time, never multiple at once
+- Keep each reply to 1–2 short lines max
+- Reference what you already know naturally (e.g. "Got it — ₹5 lakh...")
+- If both salary and loan amount are known → tell them they're likely eligible, share the application link: ${LOAN_APPLICATION_URL}
+- Never say "Dear User" or use corporate language
+- Never say you're an AI or bot
 
 Examples:
-User: "I want loan" → "Sure — how much loan are you looking for?"
-User: "5 lakh" → "Got it — ₹5 lakh. What's your monthly salary?"
-User: "60k" → "Perfect — you're likely eligible! Apply here: ${LOAN_APPLICATION_URL}"
-User: "What documents?" → "You'll need Aadhaar & PAN. Are you planning to apply soon?"
-User: "Hi" → "Hey! Are you looking for a loan or just exploring options?"
+User: "I want a loan" → "Sure! How much are you looking for?"
+User: "5 lakh" → "Got it — ₹5 lakh. And what's your monthly salary roughly?"
+User: "60k" → "Perfect, you should be eligible! Apply here 👉 ${LOAN_APPLICATION_URL}"
+User: "What documents do I need?" → "Mainly Aadhaar and PAN. Do you have those handy?"
+User: "Hi" → "Hey! Looking for a loan or just exploring options? 😊"
 
-DO NOT reject any message. DO NOT say "invalid query".`;
+DO NOT reject any message. DO NOT say "invalid query". Always engage.`;
   }
 
   // 🔵 SUPPORT MODE (E-commerce / Customer Support)
   else if (flowType === "support") {
-    systemPrompt = `You are a customer support assistant.
-
-Your job:
-- Handle orders, complaints, refunds, queries
+    systemPrompt = `You are a helpful customer support agent. Sound human and direct.
 
 Rules:
-- Be helpful and concise
-- Answer the customer's question directly
+- Answer the customer's concern directly, no preamble
 - Keep replies to 2-3 sentences max
-- Sound human, not corporate
-- Do NOT start with "Thank you for reaching out"
-- Do NOT use "Dear Customer" or "Best regards"
+- Be warm but efficient — like a good support rep who actually cares
+- Never start with "Thank you for reaching out" or "Dear Customer"
+- Never use formal sign-offs like "Best regards"
+- If you don't know the answer, say so honestly and offer to help find out
 
 Message type: ${type}`;
   }
 
   // ⚪ DEFAULT / GENERAL
   else {
-    systemPrompt = `You are a helpful assistant.
-Reply naturally and concisely in 1-2 sentences.`;
+    systemPrompt = `You are a helpful assistant. Keep replies short (1-2 sentences), natural and friendly.`;
   }
+
+  // Build conversation history for better context
+  const messages = [
+    { role: 'system', content: systemPrompt },
+  ];
+
+  // Add recent conversation context if available (split by newlines)
+  if (convoText && convoText.trim().length > 0) {
+    const lines = convoText.split('\n').filter(l => l.trim());
+    for (const line of lines.slice(-8)) { // last 8 turns max
+      if (line.startsWith('User:')) {
+        messages.push({ role: 'user', content: line.replace(/^User:\s*/, '') });
+      } else if (line.startsWith('Bot:') || line.startsWith('Assistant:')) {
+        messages.push({ role: 'assistant', content: line.replace(/^(Bot|Assistant):\s*/, '') });
+      }
+    }
+  }
+
+  messages.push({ role: 'user', content: message });
 
   try {
     const response = await openai.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: message },
-      ],
-      temperature: 0.7,
-      max_tokens: 250,
+      messages,
+      temperature: 0.75,
+      max_tokens: 220,
     });
 
     return response.choices[0].message.content.trim();

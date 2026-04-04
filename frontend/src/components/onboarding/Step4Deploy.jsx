@@ -107,7 +107,7 @@ const Step4Deploy = () => {
             <Progress value={100} />
           </div>
           <CardTitle className="text-center text-3xl bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">Setting Up Your Assistant</CardTitle>
-          <CardDescription className="mt-3 text-center text-gray-100">
+          <CardDescription className="mt-3 text-center text-slate-300">
             Configuring your automation in just a moment...
           </CardDescription>
         </CardHeader>
@@ -191,7 +191,7 @@ const Step4Deploy = () => {
                           </motion.div>
                         )}
                       </div>
-                      <span className="text-sm font-medium text-gray-100">{step}</span>
+                      <span className="text-sm font-medium text-slate-300">{step}</span>
                     </motion.div>
                   ))}
                 </div>
