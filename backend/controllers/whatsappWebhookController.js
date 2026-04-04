@@ -1,6 +1,7 @@
 import twilio from 'twilio';
 import { generateTwiMLResponse } from '../services/whatsappService.js';
-import { classifyMessage, generateReply, classifyLead, generateConversationSummary } from '../services/aiService.js';
+import { classifyMessage, generateReply, classifyLead, generateConversationSummary, detectFlowType } from '../services/aiService.js';
+import { parseReminderFromMessage, scheduleReminder } from '../services/reminderService.js';
 import Automation from '../models/Automation.js';
 import Log from '../models/Log.js';
 import User from '../models/User.js';
@@ -58,6 +59,28 @@ export const handleWhatsAppWebhook = async (req, res) => {
     }
 
     console.log(`📱 [WhatsApp] Message from ${fromNumber} (${senderName || 'unknown'}): "${incomingBody.slice(0, 80)}"`);
+
+    // ── 2a. GREETING SHORT-CIRCUIT ──────────────────────────────────────────────────
+    // "hi", "hello", "hey", "hii", "helo", "Hii" etc.
+    if (/^\s*(hi+|hello|hey|hola|hii|helo|namaste|howdy)[!\s.]*$/i.test(incomingBody.trim())) {
+      console.log('[WhatsApp] Greeting detected — sending welcome message');
+      return res.send(generateTwiMLResponse('👋 How may I help you today?\n\nI can assist you with:\n🏦 Loan queries\n🎓 Educational courses\n📦 Orders & support\n⏰ Assignment reminders\n\nJust type your question!'));
+    }
+
+    // ── 2b. REMINDER DETECTION SHORT-CIRCUIT ────────────────────────────────────────
+    // Detect before any AI processing
+    if (/remind\s*me|set\s*(a\s*)?reminder|याद\s*दिला/i.test(incomingBody)) {
+      const parsed = parseReminderFromMessage(incomingBody);
+      if (parsed) {
+        const userId = user?._id || null;
+        await scheduleReminder(fromNumber, parsed.subject, parsed.remindAtUTC, userId);
+        const localTime = new Date(parsed.remindAtUTC.getTime() + 5.5 * 60 * 60 * 1000);
+        const timeStr = localTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+        const reply = `✅ Got it! I'll remind you to *${parsed.subject}* at *${timeStr} IST* today.\n\nI'll send you a WhatsApp message when it's time! ⏰`;
+        console.log(`⏰ [WhatsApp] Reminder set for ${fromNumber}: "${parsed.subject}" at ${parsed.remindAtUTC.toISOString()}`);
+        return res.send(generateTwiMLResponse(reply));
+      }
+    }
 
     // ── 3. Find active automation with WhatsApp enabled ───────────────────────
     let automation = null;
@@ -117,8 +140,11 @@ export const handleWhatsAppWebhook = async (req, res) => {
       leadData = await classifyLead(summary, fullConversation);
       console.log(`🎯 [Lead] ${leadData.lead_type} (score: ${leadData.lead_score}) — intent: ${leadData.intent} | history: ${conversationHistory.length} prior msgs`);
 
-      // ── 9. Decide flow dynamically based on lead intent ────────────────────
-      if (leadData && leadData.intent !== 'irrelevant') {
+      // ── 9. Decide flow dynamically based on message content + conversation history ─────
+      // Use the smart detector: checks both current message AND conversation context
+      flowType = detectFlowType(incomingBody, transcript);
+      // Cross-check with lead intent: if intent is clearly loan-related, prefer sales
+      if (flowType !== 'education' && leadData && leadData.intent !== 'irrelevant' && leadData.intent !== 'just_exploring') {
         flowType = 'sales';
       }
       console.log(`🧠 Flow selected: ${flowType}`);

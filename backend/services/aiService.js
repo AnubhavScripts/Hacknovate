@@ -20,6 +20,7 @@ const MOCK_CLASSIFICATIONS = {
   broken: { type: 'complaint', sentiment: 'negative', priority: 'urgent', action: 'Escalate to quality team and arrange replacement or refund' },
   how: { type: 'query', sentiment: 'neutral', priority: 'low', action: 'Send relevant product documentation and FAQ link' },
   help: { type: 'query', sentiment: 'neutral', priority: 'medium', action: 'Route to customer support team for personalised assistance' },
+  course: { type: 'query', sentiment: 'neutral', priority: 'medium', action: 'Answer education course query' },
   default: { type: 'invalid', sentiment: 'neutral', priority: 'low', action: 'Message is not a valid customer support query' },
 };
 
@@ -29,6 +30,22 @@ function getMockClassification(message) {
     if (keyword !== 'default' && lower.includes(keyword)) return result;
   }
   return MOCK_CLASSIFICATIONS.default;
+}
+
+// ─── Flow-type detector ───────────────────────────────────────────────────────
+// Called by the WhatsApp controller to pick the right AI persona.
+export function detectFlowType(message, conversationText = '') {
+  const text = `${conversationText} ${message}`.toLowerCase();
+
+  // Education keywords
+  const eduKeywords = /\b(course|courses|syllabus|curriculum|fee|fees|tuition|admission|enroll|enrollment|certificate|degree|diploma|batch|class|classes|lecture|assignment|homework|quiz|exam|study|learn|learning|duration|module|subject|eligibility|scholarship|institute|college|university|program|programme)\b/i;
+  if (eduKeywords.test(text)) return 'education';
+
+  // Loan / fintech keywords
+  const loanKeywords = /\b(loan|borrow|credit|emi|interest rate|salary|eligib|apply|application|kyc|aadhaar|pan|lakh|repay|finance|fintech|bank|nbfc)\b/i;
+  if (loanKeywords.test(text)) return 'sales';
+
+  return 'support'; // fallback — general customer support
 }
 
 // ─── classifyMessage ──────────────────────────────────────────────────────────
@@ -90,6 +107,8 @@ Context: This is a ${flowType} business.`;
 }
 
 // ─── generateReply ────────────────────────────────────────────────────────────
+const LOAN_APPLICATION_URL = 'https://assistly-iota.vercel.app/loan-apply.html';
+
 const MOCK_REPLIES = {
   cancellation: "We've received your cancellation request and are processing it immediately. You'll get a confirmation within 15 minutes.",
   complaint: "We're sorry for the inconvenience. Our team is looking into this and will get back to you within 2 hours with a resolution.",
@@ -98,6 +117,28 @@ const MOCK_REPLIES = {
   invalid: "Please send a valid customer support message related to your orders, complaints, or queries about our products/services.",
   unknown: "Please send a valid customer support message related to your orders, complaints, or queries about our products/services.",
 };
+
+// Education mock replies (keyword-based)
+function getMockEducationReply(message) {
+  const lower = message.toLowerCase();
+  if (/\bfee|fees|cost|price|charges|tuition\b/i.test(lower))
+    return 'Our course fees vary by program — typically ₹5,000–₹50,000 depending on the duration and level. Could you tell me which course you\'re interested in?';
+  if (/\bsyllabus|curriculum|topics|modules|content\b/i.test(lower))
+    return 'Each course covers theory + hands-on practice. Core topics include fundamentals, real-world projects, and a capstone assessment. Which subject are you asking about?';
+  if (/\bduration|how long|weeks|months|hours\b/i.test(lower))
+    return 'Most courses run 4–16 weeks (self-paced or live). Short certifications can be completed in as little as 2 weeks. Which program interests you?';
+  if (/\beligib|qualify|requirement|criteria|who can\b/i.test(lower))
+    return 'Most programs are open to anyone with basic interest in the subject — no prior degree required. Some advanced courses may need foundational knowledge. Shall I help you find the right level?';
+  if (/\bscholars|discount|offer|free\b/i.test(lower))
+    return 'We offer merit-based scholarships and occasional early-bird discounts. Want me to check current offers for you?';
+  if (/\badmission|enroll|join|register|apply\b/i.test(lower))
+    return 'Enrollment is simple — just fill out a short form and choose your batch. Want me to send you the enrollment link?';
+  if (/\bcertificate|certificate|diploma|degree\b/i.test(lower))
+    return 'Yes! All courses come with a verified certificate upon completion that you can share on LinkedIn. Would you like more details?';
+  if (/\bjob|placement|career|hire\b/i.test(lower))
+    return 'We have a dedicated placement cell with 200+ hiring partners. Top graduates have been placed at leading companies. Interested in our placement stats?';
+  return 'Happy to help with your course query! Could you tell me which subject or program you\'re interested in so I can give you the best information?';
+}
 
 /**
  * generateReply
@@ -137,8 +178,27 @@ export async function generateReply(message, type = 'query', flowType = 'general
   // ── Build system prompt based on flowType ──────────────────────────────────
   let systemPrompt = "";
 
+  // 🎓 EDUCATION MODE (Generic course queries)
+  if (flowType === 'education') {
+    if (!openai) {
+      await new Promise(r => setTimeout(r, 300));
+      return getMockEducationReply(message);
+    }
+    systemPrompt = `You are a friendly and knowledgeable education assistant for an online learning platform.
+
+Your job:
+- Answer questions about courses, fees, syllabus, duration, eligibility, enrollment, certificates, and placement
+- Be encouraging and helpful
+- Keep answers concise (2-3 sentences max)
+- If you don't know a specific detail, give a sensible generic range and ask a clarifying question
+- Do NOT mention specific institutes, universities, or prices unless asked
+- Speak naturally, like a helpful academic counselor
+
+Do NOT reject education questions. Always engage warmly.`;
+  }
+
   // 🟢 SALES MODE (Loans / Fintech)
-  if (flowType === "sales") {
+  else if (flowType === "sales") {
     // Build what we already know about this user for personalization
     const knownFacts = [];
     if (knownLoanAmount) knownFacts.push(`loan amount: ₹${(knownLoanAmount / 100000).toFixed(1)} lakh`);
@@ -157,6 +217,11 @@ export async function generateReply(message, type = 'query', flowType = 'general
       ? `\nDO NOT ask again about: ${avoidAsking.join(', ')}.`
       : '';
 
+    // If both salary AND loan amount are known → give application link
+    if (knownSalary && knownLoanAmount) {
+      return `Great news! Based on your salary of ₹${knownSalary.toLocaleString('en-IN')} and loan requirement of ₹${(knownLoanAmount / 100000).toFixed(1)} lakh, you're likely eligible! 🎉\n\nPlease fill out your application here:\n👉 ${LOAN_APPLICATION_URL}\n\nOur team will review it within 24 hours.`;
+    }
+
     systemPrompt = `You are a friendly fintech assistant helping users get loans.
 
 Your goal:
@@ -170,12 +235,12 @@ Rules:
 - Keep replies to 1–2 lines max
 - Reference known info naturally (e.g. "Got it — ₹5 lakh...")
 - Ask only ONE question per reply, not multiple
-- If both salary and loan amount are known → tell them they're likely eligible and ask if they want to proceed
+- If both salary and loan amount are known → tell them they're likely eligible, give them the application link: ${LOAN_APPLICATION_URL}
 
 Examples:
 User: "I want loan" → "Sure — how much loan are you looking for?"
 User: "5 lakh" → "Got it — ₹5 lakh. What's your monthly salary?"
-User: "60k" → "Perfect — you're likely eligible! Want me to guide you through the application?"
+User: "60k" → "Perfect — you're likely eligible! Apply here: ${LOAN_APPLICATION_URL}"
 User: "What documents?" → "You'll need Aadhaar & PAN. Are you planning to apply soon?"
 User: "Hi" → "Hey! Are you looking for a loan or just exploring options?"
 

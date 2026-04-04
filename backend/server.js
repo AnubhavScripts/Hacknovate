@@ -16,9 +16,14 @@ import webhookRoutes from './routes/webhook.js';
 import escalationRoutes from './routes/escalations.js';
 import rulesRoutes from './routes/rules.js';
 import conversationRoutes from './routes/conversations.js';
+import analyticsRoutes from './routes/analytics.js';
+import reminderRoutes from './routes/reminders.js';
 
 // Middleware imports
 import { verifyApiKey } from './middleware/auth.js';
+
+// Reminder poller (fires every 60 seconds)
+import { startReminderPoller } from './services/reminderService.js';
 
 // Passport config
 import './config/passport.js';
@@ -46,6 +51,7 @@ app.use(session({
   cookie: {
     secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     maxAge: 24 * 60 * 60 * 1000, // 24 hours
   },
 }));
@@ -56,12 +62,14 @@ app.use(passport.session());
 // ─── Routes ───────────────────────────────────────────────────────────────────
 app.use('/auth', authRoutes);
 app.use('/automation', automationRoutes);
-app.use('/analyze-message', messageRoutes);
+app.use('/message', messageRoutes);
 app.use('/logs', logRoutes);
 app.use('/webhook', webhookRoutes);
 app.use('/escalations', escalationRoutes);
 app.use('/rules', rulesRoutes);
 app.use('/conversations', conversationRoutes);
+app.use('/analytics', analyticsRoutes);
+app.use('/reminders', reminderRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
@@ -76,7 +84,10 @@ app.listen(PORT, () => {
   mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/merchantai', {
     serverSelectionTimeoutMS: 5000,
   })
-    .then(() => console.log('✅ MongoDB connected'))
+    .then(() => {
+      console.log('✅ MongoDB connected');
+      startReminderPoller(); // Start reminder scheduler after DB is ready
+    })
     .catch(err => console.warn('⚠️  MongoDB not available — running in DB-less demo mode:', err.message));
 });
 

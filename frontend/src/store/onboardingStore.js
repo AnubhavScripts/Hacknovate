@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { saveAutomationApi } from '../services/api';
 
 export const useOnboardingStore = create(
   persist(
@@ -69,16 +70,36 @@ export const useOnboardingStore = create(
         deploymentProgress: 0,
       }),
 
-      saveOnboardingData: () => {
+      saveOnboardingData: async (userId) => {
         const state = get();
-        const data = {
-          userInfo: state.userInfo,
-          automations: state.selectedAutomations,
-          channels: state.connectedChannels,
-          timestamp: new Date().toISOString(),
+        
+        if (!userId) {
+          console.error('userId is required to save automation data');
+          return { success: false, error: 'User ID is required' };
+        }
+        
+        const automationData = {
+          userId,
+          selectedOptions: state.selectedAutomations,
+          connectedChannels: state.connectedChannels,
+          status: 'active',
         };
-        localStorage.setItem('onboardingData', JSON.stringify(data));
-        return data;
+        
+        try {
+          await saveAutomationApi(automationData);
+          
+          const data = {
+            userInfo: state.userInfo,
+            automations: state.selectedAutomations,
+            channels: state.connectedChannels,
+            timestamp: new Date().toISOString(),
+          };
+          localStorage.setItem('onboardingData', JSON.stringify(data));
+          return { success: true, data };
+        } catch (err) {
+          console.error('Failed to save onboarding data:', err);
+          return { success: false, error: err.response?.data?.error || err.message };
+        }
       },
     }),
     {

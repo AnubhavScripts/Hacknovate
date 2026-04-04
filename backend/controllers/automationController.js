@@ -193,3 +193,16 @@ export const updateStatus = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
+
+// ─── Delete automation for a user ─────────────────────────────────────────────
+export const deleteAutomation = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const result = await Automation.findOneAndDelete({ userId });
+    if (!result) return res.status(404).json({ error: 'No automation found for this user' });
+    console.log(`🗑️ Automation deleted for user ${userId}`);
+    res.json({ success: true, message: 'Automation deleted' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};

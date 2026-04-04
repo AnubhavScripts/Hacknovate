@@ -128,8 +128,8 @@ export const deleteRule = async (req, res) => {
       return res.status(404).json({ error: 'Automation not found' });
     }
 
-    // Remove rule
-    automation.rules.id(ruleId).remove();
+    // Remove rule (Mongoose v8: use .pull() not .remove())
+    automation.rules.pull(ruleId);
     await automation.save();
 
     res.json({

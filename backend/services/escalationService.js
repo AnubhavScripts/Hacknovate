@@ -152,7 +152,7 @@ function buildEscalationEmail(log, reason) {
 
                 <!-- CTA -->
                 <div style="margin-bottom: 20px;">
-                    <a href="http://localhost:5173/dashboard" style="display: inline-block; background-color: ${priorityColor}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px;">
+                    <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/dashboard" style="display: inline-block; background-color: ${priorityColor}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px;">
                         Review in Dashboard
                     </a>
                 </div>

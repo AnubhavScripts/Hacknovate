@@ -51,16 +51,16 @@ const Step2Automations = () => {
       transition={{ duration: 0.3 }}
       className="w-full"
     >
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 w-full max-w-5xl">
         {/* Main Content */}
         <div className="lg:col-span-2">
-          <Card>
+          <Card className="bg-slate-900/90 border-slate-800 backdrop-blur-xl">
             <CardHeader>
-              <div className="mb-4">
+              <div className="mb-6">
                 <Progress value={50} />
               </div>
-              <CardTitle>Select Automations</CardTitle>
-              <CardDescription>
+              <CardTitle className="text-3xl bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">Select Automations</CardTitle>
+              <CardDescription className="text-slate-300 mt-2">
                 Choose which automation workflows to enable
               </CardDescription>
             </CardHeader>
@@ -78,22 +78,26 @@ const Step2Automations = () => {
                     >
                       <div
                         onClick={() => toggleAutomation(automation.id)}
-                        className={`cursor-pointer rounded-lg border-2 p-4 transition-all ${
+                        className={`cursor-pointer rounded-xl border-2 p-5 transition-all ${
                           isSelected
-                            ? 'border-blue-600 bg-blue-50'
-                            : 'border-gray-200 bg-white hover:border-gray-300'
+                            ? 'border-blue-500/60 bg-gradient-to-br from-blue-600/20 to-indigo-600/20 shadow-lg shadow-blue-600/20'
+                            : 'border-slate-700/50 bg-slate-800/50 hover:border-slate-600 hover:bg-slate-800/70'
                         }`}
                       >
                         <div className="flex items-start gap-3">
                           <Checkbox checked={isSelected} />
                           <div className="flex-1">
                             <div className="flex items-center gap-2">
-                              <Icon size={18} className="text-blue-600" />
-                              <h3 className="font-semibold text-gray-900">
+                              <Icon size={18} className={isSelected ? 'text-blue-400' : 'text-slate-400'} />
+                              <h3 className={`font-semibold ${
+                                isSelected ? 'text-blue-300' : 'text-slate-100'
+                              }`}>
                                 {automation.label}
                               </h3>
                             </div>
-                            <p className="mt-1 text-sm text-gray-600">
+                            <p className={`mt-1 text-sm ${
+                              isSelected ? 'text-blue-200/80' : 'text-slate-400'
+                            }`}>
                               {automation.description}
                             </p>
                           </div>
@@ -109,29 +113,29 @@ const Step2Automations = () => {
 
         {/* Preview Panel */}
         <div className="space-y-4">
-          <Card>
+          <Card className="bg-slate-900/90 border-slate-800 backdrop-blur-xl">
             <CardHeader>
-              <CardTitle className="text-lg">Live Preview</CardTitle>
+              <CardTitle className="text-lg text-blue-300">Live Preview</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
                 {/* Chat Bubble */}
-                <div className="rounded-lg bg-blue-600 p-4 text-white">
-                  <p className="text-sm">{previewText}</p>
+                <div className="rounded-lg bg-gradient-to-r from-blue-600/80 to-indigo-600/80 p-4 text-white shadow-lg shadow-blue-600/30">
+                  <p className="text-sm font-medium">{previewText}</p>
                 </div>
 
                 {/* Selected Badges */}
                 <div>
-                  <p className="mb-2 text-xs font-semibold text-gray-700">SELECTED</p>
+                  <p className="mb-3 text-xs font-bold text-slate-400 uppercase tracking-wider">Selected</p>
                   <div className="flex flex-wrap gap-2">
                     {selectedAutomations.length > 0 ? (
                       selectedAutomations.map((automation) => (
-                        <Badge key={automation} variant="success" className="text-xs">
-                          {automationOptions.find(opt => opt.id === automation)?.label}
+                        <Badge key={automation} variant="active" className="text-xs font-semibold">
+                          ✓ {automationOptions.find(opt => opt.id === automation)?.label}
                         </Badge>
                       ))
                     ) : (
-                      <p className="text-xs text-gray-500">No automations selected yet</p>
+                      <p className="text-xs text-slate-500">Select automations above</p>
                     )}
                   </div>
                 </div>
@@ -140,10 +144,10 @@ const Step2Automations = () => {
           </Card>
 
           {/* Info Box */}
-          <Card className="bg-blue-50 border-blue-200">
+          <Card className="bg-gradient-to-br from-blue-600/20 to-indigo-600/20 border-blue-500/30 backdrop-blur-sm">
             <CardContent className="pt-6">
-              <p className="text-xs text-blue-900">
-                💡 <strong>Tip:</strong> You can modify these choices later from your dashboard.
+              <p className="text-xs text-slate-300">
+                <span className="text-blue-300 font-bold">💡 Tip:</span> You can modify these choices later from your dashboard.
               </p>
             </CardContent>
           </Card>
