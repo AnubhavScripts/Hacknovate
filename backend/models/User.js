@@ -10,9 +10,20 @@ const userSchema = new mongoose.Schema({
   gmailEmail: { type: String, default: '' },
   isOnboarded: { type: Boolean, default: false },
 
+  // ── Onboarding State ───────────────────────────────────────────────────────
+  onboarding: {
+    selectedAutomations:   { type: [String], default: [] },
+    selectedSubcategories: { type: [String], default: [] },
+    connectedChannels: {
+      gmail:    { type: Boolean, default: false },
+      whatsapp: { type: Boolean, default: false },
+    },
+    completed:    { type: Boolean, default: false },
+    completedAt:  { type: Date,    default: null },
+    automationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Automation', default: null },
+  },
+
   // ── Persistent Lead Intelligence ───────────────────────────────────────────
-  // Updated in real-time on every WhatsApp interaction so the dashboard never
-  // has to recompute lead state from the logs collection.
   lead: {
     type:          { type: String, enum: ['HOT', 'WARM', 'COLD', null], default: null },
     score:         { type: Number, min: 0, max: 100, default: null },
@@ -21,7 +32,7 @@ const userSchema = new mongoose.Schema({
     intent:        { type: String, default: null },
     signals:       [{ type: String }],
     reason:        { type: String, default: null },
-    summary:       { type: String, default: null }, // AI-generated conversation summary
+    summary:       { type: String, default: null },
     lastInteraction: { type: Date, default: null },
   },
 }, { timestamps: true });

@@ -5,43 +5,49 @@ import { Progress } from '../ui/Progress';
 import { Checkbox } from '../ui/Checkbox';
 import { Badge } from '../ui/Badge';
 import { useOnboardingStore } from '../../store/onboardingStore';
-import { MessageSquare, Package, FileText, XCircle } from 'lucide-react';
+import { ShoppingCart, BookOpen, DollarSign } from 'lucide-react';
 
 const automationOptions = [
   {
-    id: 'complaint_handling',
-    label: 'Complaint Handling',
-    description: 'Auto-respond to customer complaints',
-    icon: MessageSquare,
+    id: 'ecommerce',
+    label: 'Ecommerce',
+    description: 'Online retail and shopping automation',
+    icon: ShoppingCart,
   },
   {
-    id: 'query_answering',
-    label: 'Query Answering',
-    description: 'Answer common customer questions',
-    icon: FileText,
+    id: 'education',
+    label: 'Education',
+    description: 'Educational institution automation',
+    icon: BookOpen,
   },
   {
-    id: 'order_tracking',
-    label: 'Order Tracking',
-    description: 'Provide real-time order updates',
-    icon: Package,
-  },
-  {
-    id: 'cancellation_requests',
-    label: 'Cancellation Requests',
-    description: 'Handle cancellation workflows',
-    icon: XCircle,
+    id: 'finance',
+    label: 'Finance',
+    description: 'Financial services automation',
+    icon: DollarSign,
   },
 ];
 
 const Step2Automations = () => {
-  const { selectedAutomations, toggleAutomation, setCurrentStep } = useOnboardingStore();
+  const { selectedAutomations, toggleAutomation, setCurrentStep, saveAutomations } = useOnboardingStore();
 
   const previewText = selectedAutomations.length > 0
     ? `Hi! I can now help you with ${selectedAutomations.map(a => 
         automationOptions.find(opt => opt.id === a)?.label
       ).join(', ')}.`
     : 'Hi! I can help you with customer support automation.';
+
+  const handleContinue = async () => {
+    // Save to backend
+    const result = await saveAutomations();
+    if (result.success) {
+      setCurrentStep(3);
+    } else {
+      console.error('Failed to save automations:', result.error);
+      // Still proceed to next step
+      setCurrentStep(3);
+    }
+  };
 
   return (
     <motion.div
@@ -60,7 +66,7 @@ const Step2Automations = () => {
                 <Progress value={50} />
               </div>
               <CardTitle className="text-3xl bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">Select Automations</CardTitle>
-              <CardDescription className="text-slate-300 mt-2">
+              <CardDescription className="text-gray-100 mt-2">
                 Choose which automation workflows to enable
               </CardDescription>
             </CardHeader>
@@ -88,15 +94,15 @@ const Step2Automations = () => {
                           <Checkbox checked={isSelected} />
                           <div className="flex-1">
                             <div className="flex items-center gap-2">
-                              <Icon size={18} className={isSelected ? 'text-blue-400' : 'text-slate-400'} />
+                              <Icon size={18} className={isSelected ? 'text-blue-400' : 'text-gray-400'} />
                               <h3 className={`font-semibold ${
-                                isSelected ? 'text-blue-300' : 'text-slate-100'
+                                isSelected ? 'text-blue-300' : 'text-white'
                               }`}>
                                 {automation.label}
                               </h3>
                             </div>
                             <p className={`mt-1 text-sm ${
-                              isSelected ? 'text-blue-200/80' : 'text-slate-400'
+                              isSelected ? 'text-blue-200/80' : 'text-gray-300'
                             }`}>
                               {automation.description}
                             </p>
@@ -115,7 +121,7 @@ const Step2Automations = () => {
         <div className="space-y-4">
           <Card className="bg-slate-900/90 border-slate-800 backdrop-blur-xl">
             <CardHeader>
-              <CardTitle className="text-lg text-blue-300">Live Preview</CardTitle>
+              <CardTitle className="text-lg text-white">Live Preview</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
@@ -126,7 +132,7 @@ const Step2Automations = () => {
 
                 {/* Selected Badges */}
                 <div>
-                  <p className="mb-3 text-xs font-bold text-slate-400 uppercase tracking-wider">Selected</p>
+                  <p className="mb-3 text-xs font-bold text-gray-300 uppercase tracking-wider">Selected</p>
                   <div className="flex flex-wrap gap-2">
                     {selectedAutomations.length > 0 ? (
                       selectedAutomations.map((automation) => (
@@ -135,7 +141,7 @@ const Step2Automations = () => {
                         </Badge>
                       ))
                     ) : (
-                      <p className="text-xs text-slate-500">Select automations above</p>
+                      <p className="text-xs text-gray-400">Select automations above</p>
                     )}
                   </div>
                 </div>
@@ -164,7 +170,7 @@ const Step2Automations = () => {
         </Button>
         <Button
           variant="primary"
-          onClick={() => setCurrentStep(3)}
+          onClick={handleContinue}
           disabled={selectedAutomations.length === 0}
         >
           Continue

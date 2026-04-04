@@ -3,8 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/Card';
 import { Progress } from '../ui/Progress';
+import { Button } from '../ui/Button';
 import { useOnboardingStore } from '../../store/onboardingStore';
 import { useUser } from '../../context/UserContext';
+import { deployOnboardingApi } from '../../services/api';
 import { Loader2, Check, AlertCircle } from 'lucide-react';
 
 const Step4Deploy = () => {
@@ -14,19 +16,28 @@ const Step4Deploy = () => {
     startDeployment,
     updateDeploymentProgress,
     completeDeployment,
-    saveOnboardingData,
+    selectedAutomations,
+    selectedSubcategories,
+    connectedChannels,
   } = useOnboardingStore();
   
   const [deployError, setDeployError] = useState(null);
   const [isComplete, setIsComplete] = useState(false);
+  const [isDeploying, setIsDeploying] = useState(true);
 
   const deploymentSteps = [
-    'Setting up automations...',
-    'Connecting channels...',
-    'Finalizing deployment...',
+    'Saving configuration...',
+    'Deploying AI assistant...',
+    'Finalizing setup...',
   ];
 
   useEffect(() => {
+    // Capture values at mount time — avoid re-running on state changes
+    const currentUser = user;
+    const currentAutomations = selectedAutomations;
+    const currentSubcategories = selectedSubcategories;
+    const currentChannels = connectedChannels;
+
     startDeployment();
 
     // Simulate deployment process
@@ -38,38 +49,49 @@ const Step4Deploy = () => {
       } else {
         clearInterval(interval);
         
-        // Save onboarding data to backend
+        // Deploy onboarding to backend
         try {
-          const userId = user?.id || user?._id || user?.userId;
+          const userId = currentUser?.id || currentUser?._id || currentUser?.userId;
           
           if (!userId) {
             setDeployError('User information not available. Please log in again.');
             completeDeployment();
+            setIsDeploying(false);
             return;
           }
           
-          const result = await saveOnboardingData(userId);
-          if (result.success) {
+          const response = await deployOnboardingApi({
+            userId,
+            selectedAutomations: currentAutomations,
+            selectedSubcategories: currentSubcategories,
+            connectedChannels: currentChannels,
+          });
+
+          if (response.data.success) {
             completeDeployment();
             setIsComplete(true);
+            setIsDeploying(false);
             
-            // Redirect to dashboard after 1 second
+            // Redirect to dashboard after 1.5 seconds
             setTimeout(() => {
               navigate('/dashboard');
-            }, 1000);
+            }, 1500);
           } else {
-            setDeployError(result.error || 'Failed to save automation setup');
+            setDeployError(response.data.error || 'Failed to deploy automation setup');
             completeDeployment();
+            setIsDeploying(false);
           }
         } catch (err) {
-          setDeployError(err.message || 'An error occurred during deployment');
+          console.error('❌ Deployment error:', err);
+          setDeployError(err.response?.data?.error || err.message || 'An error occurred during deployment');
           completeDeployment();
+          setIsDeploying(false);
         }
       }
     }, 1200);
 
     return () => clearInterval(interval);
-  }, [user]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <motion.div
@@ -85,7 +107,7 @@ const Step4Deploy = () => {
             <Progress value={100} />
           </div>
           <CardTitle className="text-center text-3xl bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">Setting Up Your Assistant</CardTitle>
-          <CardDescription className="mt-3 text-center text-slate-300">
+          <CardDescription className="mt-3 text-center text-gray-100">
             Configuring your automation in just a moment...
           </CardDescription>
         </CardHeader>
@@ -100,12 +122,22 @@ const Step4Deploy = () => {
                 <div className="rounded-lg bg-gradient-to-br from-red-600/20 to-rose-600/20 border border-red-500/30 p-4 text-center backdrop-blur-sm">
                   <p className="text-sm text-red-300 font-medium">⚠️ Deployment Error</p>
                   <p className="text-xs text-red-200 mt-2">{deployError}</p>
-                  <button
-                    onClick={() => navigate('/onboarding')}
-                    className="mt-4 px-4 py-2 bg-gradient-to-r from-red-600 to-rose-600 text-white rounded-lg hover:shadow-lg hover:shadow-red-600/50 transition-all font-semibold"
-                  >
-                    Go Back
-                  </button>
+                  <div className="mt-4 flex gap-2 justify-center">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => navigate('/onboarding')}
+                    >
+                      Try Again
+                    </Button>
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={() => navigate('/dashboard')}
+                    >
+                      Go to Dashboard
+                    </Button>
+                  </div>
                 </div>
               </>
             ) : (
@@ -118,7 +150,7 @@ const Step4Deploy = () => {
                       transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
                       className="absolute inset-0"
                     >
-                      <div className="w-full h-full rounded-full border-4 border-gray-200 border-t-blue-600" />
+                      <div className="w-full h-full rounded-full border-4 border-slate-700 border-t-blue-400" />
                     </motion.div>
                     <motion.div
                       animate={{ scale: [1, 1.2, 1] }}
@@ -159,7 +191,7 @@ const Step4Deploy = () => {
                           </motion.div>
                         )}
                       </div>
-                      <span className="text-sm font-medium text-gray-700">{step}</span>
+                      <span className="text-sm font-medium text-gray-100">{step}</span>
                     </motion.div>
                   ))}
                 </div>
@@ -170,12 +202,12 @@ const Step4Deploy = () => {
                     initial={{ opacity: 0, scale: 0.8 }}
                     animate={{ opacity: 1, scale: 1 }}
                     transition={{ delay: 0.5 }}
-                    className="rounded-lg bg-green-50 border border-green-200 p-4 text-center"
+                    className="rounded-lg bg-gradient-to-br from-green-600/20 to-emerald-600/20 border border-green-500/30 p-4 text-center backdrop-blur-sm"
                   >
-                    <p className="text-sm text-green-900 font-medium">
+                    <p className="text-sm text-green-300 font-medium">
                       ✨ Your AI assistant is ready to go!
                     </p>
-                    <p className="text-xs text-green-700 mt-1">
+                    <p className="text-xs text-green-200/80 mt-1">
                       Redirecting to dashboard...
                     </p>
                   </motion.div>

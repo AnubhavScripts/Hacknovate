@@ -33,7 +33,11 @@ const automationSchema = new mongoose.Schema({
   name: { type: String, default: 'Default Automation' },
   selectedOptions: {
     type: [String],
-    enum: ['complaint_handling', 'query_answering', 'order_tracking', 'cancellation_requests'],
+    // Supports both onboarding categories (ecommerce/education/finance) and automation types
+    default: [],
+  },
+  selectedSubcategories: {
+    type: [String],
     default: [],
   },
   connectedChannels: {

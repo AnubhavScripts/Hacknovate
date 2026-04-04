@@ -6,11 +6,11 @@ import { Progress } from '../ui/Progress';
 import { Badge } from '../ui/Badge';
 import { useOnboardingStore } from '../../store/onboardingStore';
 import { Mail, MessageCircle, Check, Loader2, AlertCircle } from 'lucide-react';
-import { gmailConnectApi } from '../../services/api';
 
 const Step3Channels = () => {
-  const { connectedChannels, connectChannel, setCurrentStep } = useOnboardingStore();
+  const { connectedChannels, connectChannel, setCurrentStep, saveChannels } = useOnboardingStore();
   const [connecting, setConnecting] = useState({});
+  const [error, setError] = useState(null);
 
   const channels = [
     {
@@ -18,28 +18,27 @@ const Step3Channels = () => {
       label: 'Gmail',
       icon: Mail,
       description: 'Connect your Gmail account',
-      color: 'bg-red-50 border-red-200',
     },
     {
       id: 'whatsapp',
       label: 'WhatsApp',
       icon: MessageCircle,
       description: 'Connect via Twilio',
-      color: 'bg-green-50 border-green-200',
     },
   ];
 
   const handleConnect = async (channelId) => {
     setConnecting((prev) => ({ ...prev, [channelId]: true }));
+    setError(null);
 
     try {
       if (channelId === 'gmail') {
         // Redirect to Gmail auth flow
-        window.location.href = 'https://hacknovate-production.up.railway.app/auth/gmail/connect';
+        const apiBase = import.meta.env.VITE_API_BASE_URL || 'https://hacknovate-production.up.railway.app';
+        window.location.href = `${apiBase}/auth/gmail/connect`;
         return;
       } else if (channelId === 'whatsapp') {
-        // For WhatsApp, just simulate the connection for now
-        // In production, this would redirect to Twilio setup or an API call
+        // Simulate WhatsApp connection
         await new Promise((resolve) => setTimeout(resolve, 2000));
       }
 
@@ -47,8 +46,29 @@ const Step3Channels = () => {
       setConnecting((prev) => ({ ...prev, [channelId]: false }));
     } catch (err) {
       console.error(`Error connecting to ${channelId}:`, err);
+      setError(`Failed to connect ${channelId}`);
       setConnecting((prev) => ({ ...prev, [channelId]: false }));
     }
+  };
+
+  const handleContinue = async () => {
+    const hasAtLeastOneChannel = channels.some((ch) => connectedChannels[ch.id]);
+    if (!hasAtLeastOneChannel) {
+      setError('Please connect at least one channel');
+      return;
+    }
+
+    // First save channels to backend
+    try {
+      const result = await saveChannels();
+      console.log('✅ Channels saved:', result);
+    } catch (err) {
+      console.error('Failed to save channels:', err);
+      // Still proceed to next step
+    }
+    
+    // Then proceed to next step
+    setCurrentStep(5);
   };
 
   const allConnected = channels.every((ch) => connectedChannels[ch.id]);
@@ -67,12 +87,19 @@ const Step3Channels = () => {
             <Progress value={75} />
           </div>
           <CardTitle className="text-3xl bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">Connect Your Channels</CardTitle>
-          <CardDescription className="text-slate-300 mt-2">
+          <CardDescription className="text-gray-100 mt-2">
             Choose which channels to connect for automations
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
+            {error && (
+              <div className="rounded-lg bg-red-600/20 border border-red-500/30 p-3 flex items-start gap-2 mb-4">
+                <AlertCircle className="text-red-400 mt-0.5" size={18} />
+                <p className="text-sm text-red-300">{error}</p>
+              </div>
+            )}
+
             {channels.map((channel) => {
               const Icon = channel.icon;
               const isConnected = connectedChannels[channel.id];
@@ -96,11 +123,11 @@ const Step3Channels = () => {
                             ? 'bg-blue-500/20' 
                             : 'bg-slate-700/50'
                         }`}>
-                          <Icon size={24} className={isConnected ? 'text-blue-400' : 'text-slate-300'} />
+                          <Icon size={24} className={isConnected ? 'text-blue-400' : 'text-gray-300'} />
                         </div>
                         <div>
-                          <h3 className={`font-semibold ${isConnected ? 'text-blue-300' : 'text-slate-100'}`}>{channel.label}</h3>
-                          <p className={`text-sm ${isConnected ? 'text-blue-200/70' : 'text-slate-400'}`}>{channel.description}</p>
+                          <h3 className={`font-semibold ${isConnected ? 'text-blue-300' : 'text-white'}`}>{channel.label}</h3>
+                          <p className={`text-sm ${isConnected ? 'text-blue-200/70' : 'text-gray-300'}`}>{channel.description}</p>
                         </div>
                       </div>
 
@@ -140,14 +167,14 @@ const Step3Channels = () => {
 
           {/* Info Box */}
           <div className="mt-6 rounded-lg bg-gradient-to-br from-blue-600/20 to-indigo-600/20 border border-blue-500/30 p-4 backdrop-blur-sm">
-            <p className="text-sm text-slate-300">
+            <p className="text-sm text-gray-100">
               <span className="text-blue-300 font-bold">ℹ️ Note:</span> You need at least one channel connected to proceed. You can add more channels later from settings.
             </p>
           </div>
 
           {/* Connected Summary */}
           <div className="mt-6 p-4 bg-slate-800/50 rounded-lg border border-slate-700/50">
-            <p className="text-sm font-semibold text-slate-200 mb-3">Connected Channels</p>
+            <p className="text-sm font-semibold text-white mb-3">Connected Channels</p>
             <div className="flex flex-wrap gap-2">
               {channels.length > 0 ? (
                 channels.map((ch) => (
@@ -159,29 +186,31 @@ const Step3Channels = () => {
                   </Badge>
                 ))
               ) : (
-                <p className="text-sm text-slate-500">No channels connected</p>
+                <p className="text-sm text-gray-400">No channels connected</p>
               )}
             </div>
           </div>
+
+          {/* Action Buttons */}
+          <div className="flex gap-3 mt-8">
+            <Button
+              variant="secondary"
+              onClick={() => setCurrentStep(3)}
+              className="flex-1"
+            >
+              Back
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleContinue}
+              disabled={!channels.some((ch) => connectedChannels[ch.id])}
+              className="flex-1"
+            >
+              Continue
+            </Button>
+          </div>
         </CardContent>
       </Card>
-
-      {/* Navigation */}
-      <div className="mt-8 flex gap-3 justify-end max-w-2xl mx-auto">
-        <Button
-          variant="outline"
-          onClick={() => setCurrentStep(2)}
-        >
-          Back
-        </Button>
-        <Button
-          variant="primary"
-          onClick={() => setCurrentStep(4)}
-          disabled={!channels.some((ch) => connectedChannels[ch.id])}
-        >
-          Continue
-        </Button>
-      </div>
     </motion.div>
   );
 };

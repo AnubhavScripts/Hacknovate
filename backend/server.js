@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import session from 'express-session';
+import MongoStore from 'connect-mongo';
 import passport from 'passport';
 import mongoose from 'mongoose';
 import { fileURLToPath } from 'url';
@@ -18,6 +19,7 @@ import rulesRoutes from './routes/rules.js';
 import conversationRoutes from './routes/conversations.js';
 import analyticsRoutes from './routes/analytics.js';
 import reminderRoutes from './routes/reminders.js';
+import onboardingRoutes from './routes/onboarding.js';
 
 // Middleware imports
 import { verifyApiKey } from './middleware/auth.js';
@@ -44,15 +46,26 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Use MongoDB-backed sessions so sessions survive Railway restarts/restarts.
+// Falls back to in-memory (MemoryStore) if MONGODB_URI is not set.
+const MONGODB_URI = process.env.MONGODB_URI;
+
 app.use(session({
   secret: process.env.SESSION_SECRET || 'dev_secret',
   resave: false,
   saveUninitialized: false,
+  store: MONGODB_URI
+    ? MongoStore.create({
+        mongoUrl: MONGODB_URI,
+        ttl: 24 * 60 * 60, // 24 hours in seconds
+        touchAfter: 24 * 3600, // lazy session update
+      })
+    : undefined, // falls back to MemoryStore in dev
   cookie: {
     secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
     sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours in ms
   },
 }));
 
@@ -70,6 +83,7 @@ app.use('/rules', rulesRoutes);
 app.use('/conversations', conversationRoutes);
 app.use('/analytics', analyticsRoutes);
 app.use('/reminders', reminderRoutes);
+app.use('/onboarding', onboardingRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
@@ -81,14 +95,18 @@ app.listen(PORT, () => {
   console.log(`🚀 MerchantAI backend running on http://localhost:${PORT}`);
 
   // Connect to MongoDB after server is listening (non-blocking)
-  mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/merchantai', {
-    serverSelectionTimeoutMS: 5000,
-  })
-    .then(() => {
-      console.log('✅ MongoDB connected');
-      startReminderPoller(); // Start reminder scheduler after DB is ready
+  if (MONGODB_URI) {
+    mongoose.connect(MONGODB_URI, {
+      serverSelectionTimeoutMS: 5000,
     })
-    .catch(err => console.warn('⚠️  MongoDB not available — running in DB-less demo mode:', err.message));
+      .then(() => {
+        console.log('✅ MongoDB connected');
+        startReminderPoller(); // Start reminder scheduler after DB is ready
+      })
+      .catch(err => console.warn('⚠️  MongoDB connection failed:', err.message));
+  } else {
+    console.warn('⚠️  MONGODB_URI not set — running in DB-less demo mode');
+  }
 });
 
 export default app;

@@ -21,7 +21,7 @@ const Step1Welcome = () => {
             <Progress value={25} />
           </div>
           <CardTitle className="text-4xl bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">Set up your AI assistant</CardTitle>
-          <CardDescription className="mt-3 text-base text-slate-300">
+          <CardDescription className="mt-3 text-base text-gray-100">
             Let's personalize your automation experience in under a minute
           </CardDescription>
         </CardHeader>
@@ -35,7 +35,7 @@ const Step1Welcome = () => {
               >
                 🤖
               </motion.div>
-              <p className="text-sm text-slate-300">
+              <p className="text-sm text-gray-100">
                 Automate your customer support and boost productivity with our AI assistant
               </p>
             </div>
@@ -50,8 +50,8 @@ const Step1Welcome = () => {
             </Button>
             
             <div className="space-y-2 text-center">
-              <p className="text-sm text-slate-400">✨ <span className="text-blue-300 font-semibold">Takes about 2 minutes</span></p>
-              <p className="text-sm text-slate-400">🎁 <span className="text-indigo-300 font-semibold">No credit card required</span></p>
+              <p className="text-sm text-gray-300">✨ <span className="text-blue-300 font-semibold">Takes about 2 minutes</span></p>
+              <p className="text-sm text-gray-300">🎁 <span className="text-indigo-300 font-semibold">No credit card required</span></p>
             </div>
           </div>
         </CardContent>

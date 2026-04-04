@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import Step1Welcome from './Step1Welcome';
 import Step2Automations from './Step2Automations';
+import Step3Subcategories from './Step3Subcategories';
 import Step3Channels from './Step3Channels';
 import Step4Deploy from './Step4Deploy';
 import { useOnboardingStore } from '../../store/onboardingStore';
@@ -38,8 +39,10 @@ const OnboardingLayout = () => {
       case 2:
         return <Step2Automations />;
       case 3:
-        return <Step3Channels />;
+        return <Step3Subcategories />;
       case 4:
+        return <Step3Channels />;
+      case 5:
         return <Step4Deploy />;
       default:
         return <Step1Welcome />;

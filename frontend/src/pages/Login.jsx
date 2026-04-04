@@ -29,7 +29,8 @@ function Login() {
   };
 
   const handleGoogleLogin = () => {
-    window.location.href = "https://hacknovate-production.up.railway.app/auth/google";
+    const apiBase = import.meta.env.VITE_API_BASE_URL || 'https://hacknovate-production.up.railway.app';
+    window.location.href = `${apiBase}/auth/google`;
   };
 
   return (
