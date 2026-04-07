@@ -16,8 +16,10 @@ const Step4Deploy = () => {
     updateDeploymentProgress,
     completeDeployment,
     saveOnboardingData,
-    selectedAutomations,
+    selectedIndustry,
+    selectedWorkflows,
     connectedChannels,
+    aiClassification,
   } = useOnboardingStore();
 
   const deploymentSteps = [
@@ -42,8 +44,10 @@ const Step4Deploy = () => {
         const userId = user?._id || user?.id || 'mock_user_001';
         saveAutomationApi({
           userId,
-          selectedOptions: selectedAutomations,
+          industry: selectedIndustry,
+          workflows: selectedWorkflows,
           connectedChannels,
+          aiClassificationEnabled: aiClassification.enabled,
           status: 'active',
         }).catch(() => {}); // best-effort — don't block redirect
 

@@ -31,11 +31,25 @@ const ruleSchema = new mongoose.Schema({
 const automationSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   name: { type: String, default: 'Default Automation' },
+  
+  // NEW: Industry & Workflows instead of selectedOptions
+  industry: {
+    type: String,
+    enum: ['ecommerce', 'education', 'finance'],
+    default: 'ecommerce',
+  },
+  workflows: {
+    type: [String],
+    default: [],
+  },
+  
+  // Legacy support (kept for backwards compatibility)
   selectedOptions: {
     type: [String],
     enum: ['complaint_handling', 'query_answering', 'order_tracking', 'cancellation_requests'],
     default: [],
   },
+  
   connectedChannels: {
     gmail: { type: Boolean, default: false },
     whatsapp: { type: Boolean, default: false },
@@ -46,7 +60,17 @@ const automationSchema = new mongoose.Schema({
     default: 'draft',
   },
   
-  // ✨ NEW: Rule-based automation
+  // NEW: AI Classification settings
+  aiClassification: {
+    enabled: { type: Boolean, default: true },
+    classifyAs: {
+      type: [String],
+      enum: ['hot', 'cold'],
+      default: ['hot', 'cold'],
+    },
+  },
+  
+  // ✨ Rule-based automation
   rules: [ruleSchema],
   
   // Default rule configurations (fallback)

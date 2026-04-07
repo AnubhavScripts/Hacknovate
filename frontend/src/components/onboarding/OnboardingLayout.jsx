@@ -2,7 +2,8 @@ import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 import Step1Welcome from './Step1Welcome';
-import Step2Automations from './Step2Automations';
+import Step1IndustrySelection from './Step1IndustrySelection';
+import Step2WorkflowSelection from './Step2WorkflowSelection';
 import Step3Channels from './Step3Channels';
 import Step4Deploy from './Step4Deploy';
 import { useOnboardingStore } from '../../store/onboardingStore';
@@ -21,23 +22,23 @@ const OnboardingLayout = () => {
     if (gmailStatus === 'connected') {
       // 1. Update state FIRST before clearing URL or changing step
       connectChannel('gmail');
-      // 2. Navigate to step 3 so the "Connected" badge is visible
-      setCurrentStep(3);
+      // 2. Navigate to step 4 (Channels is now step 4)
+      setCurrentStep(4);
       // 3. Clean URL last — after state is committed
       window.history.replaceState({}, '', '/onboarding');
     } else if (gmailStatus === 'error') {
-      setCurrentStep(3);
+      setCurrentStep(4);
       window.history.replaceState({}, '', '/onboarding');
     }
   }, [location.search]);
 
   const renderStep = () => {
     switch (currentStep) {
-      case 1: return <Step1Welcome />;
-      case 2: return <Step2Automations />;
+      case 1: return <Step1IndustrySelection />;
+      case 2: return <Step2WorkflowSelection />;
       case 3: return <Step3Channels />;
       case 4: return <Step4Deploy />;
-      default: return <Step1Welcome />;
+      default: return <Step1IndustrySelection />;
     }
   };
 

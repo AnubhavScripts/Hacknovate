@@ -74,7 +74,7 @@ const Step3Channels = () => {
       <Card className="mx-auto max-w-2xl">
         <CardHeader>
           <div className="mb-4">
-            <Progress value={75} />
+            <Progress value={60} />
           </div>
           <CardTitle>Connect Your Channels</CardTitle>
           <CardDescription>

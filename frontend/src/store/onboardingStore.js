@@ -5,6 +5,8 @@ export const useOnboardingStore = create(
   persist(
     (set, get) => ({
       currentStep: 1,
+      selectedIndustry: null, // 'ecommerce', 'education', 'finance'
+      selectedWorkflows: [], // domain-specific workflows
       selectedAutomations: [],
       connectedChannels: {
         gmail: false,
@@ -14,11 +16,26 @@ export const useOnboardingStore = create(
         name: '',
         email: '',
       },
+      aiClassification: {
+        enabled: true,
+        categories: ['hot', 'cold'], // hot = urgent/immediate response, cold = can wait
+      },
       isDeploying: false,
       deploymentProgress: 0,
 
       // Actions
       setCurrentStep: (step) => set({ currentStep: step }),
+      
+      setSelectedIndustry: (industry) => set({ selectedIndustry: industry }),
+      
+      toggleWorkflow: (workflow) => set((state) => {
+        const isSelected = state.selectedWorkflows.includes(workflow);
+        return {
+          selectedWorkflows: isSelected
+            ? state.selectedWorkflows.filter((w) => w !== workflow)
+            : [...state.selectedWorkflows, workflow],
+        };
+      }),
       
       toggleAutomation: (automation) => set((state) => {
         const isSelected = state.selectedAutomations.includes(automation);
@@ -42,6 +59,10 @@ export const useOnboardingStore = create(
         userInfo: { ...state.userInfo, ...info },
       })),
 
+      updateAIClassification: (config) => set((state) => ({
+        aiClassification: { ...state.aiClassification, ...config },
+      })),
+
       startDeployment: () => set({ 
         isDeploying: true,
         deploymentProgress: 0 
@@ -56,6 +77,8 @@ export const useOnboardingStore = create(
 
       resetOnboarding: () => set({
         currentStep: 1,
+        selectedIndustry: null,
+        selectedWorkflows: [],
         selectedAutomations: [],
         connectedChannels: {
           gmail: false,

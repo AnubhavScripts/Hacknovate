@@ -15,7 +15,11 @@ import logRoutes from './routes/logs.js';
 import webhookRoutes from './routes/webhook.js';
 import escalationRoutes from './routes/escalations.js';
 import rulesRoutes from './routes/rules.js';
+<<<<<<< Updated upstream
 import conversationRoutes from './routes/conversations.js';
+=======
+import classificationRoutes from './routes/classification.js';
+>>>>>>> Stashed changes
 
 // Middleware imports
 import { verifyApiKey } from './middleware/auth.js';
@@ -61,7 +65,11 @@ app.use('/logs', logRoutes);
 app.use('/webhook', webhookRoutes);
 app.use('/escalations', escalationRoutes);
 app.use('/rules', rulesRoutes);
+<<<<<<< Updated upstream
 app.use('/conversations', conversationRoutes);
+=======
+app.use('/classify', classificationRoutes);
+>>>>>>> Stashed changes
 
 // Health check
 app.get('/health', (req, res) => {

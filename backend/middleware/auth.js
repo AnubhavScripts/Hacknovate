@@ -46,6 +46,9 @@ export const verifyApiKey = (req, res, next) => {
   next();
 };
 
+// Backward compatibility alias for routes using authenticate middleware
+export const authenticate = verifyApiKey;
+
 /**
  * Validate Twilio Webhook Request Signature
  * Ensures request came from Twilio, not a spoofed source
